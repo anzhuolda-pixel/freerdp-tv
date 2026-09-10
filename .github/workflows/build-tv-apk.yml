@@ -103,6 +103,7 @@ jobs:
           grep -F '电视大屏持续显示保护' "$STUDIO/freeRDPCore/src/main/res/values-zh/strings.xml"
           grep -F 'return 0;' "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/ApplicationSettingsActivity.java"
           grep -F 'FLAG_KEEP_SCREEN_ON' "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/SessionActivity.java"
+          grep -F 'abiFilters "armeabi-v7a", "arm64-v8a"' "$STUDIO/aFreeRDP/build.gradle"
 
       - name: Build APK using proven debug variant
         shell: bash
@@ -117,7 +118,7 @@ jobs:
           set -e
           exit "$STATUS"
 
-      - name: Strip debug signature, align, sign v1+v2, and verify APK
+      - name: Strip debug signature, align, sign v2, and verify APK
         shell: bash
         run: |
           set -euxo pipefail
@@ -149,7 +150,7 @@ jobs:
             --ks-pass pass:BillionRdpTest10 \
             --key-pass pass:BillionRdpTest10 \
             --min-sdk-version 28 \
-            --v1-signing-enabled true \
+            --v1-signing-enabled false \
             --v2-signing-enabled true \
             --v3-signing-enabled false \
             --v4-signing-enabled false \
@@ -166,7 +167,6 @@ jobs:
           grep -Fq "uses-feature-not-required: name='android.hardware.microphone'" output/APK_BADGING.txt
 
           "$APKSIGNER" verify --verbose --print-certs "$OUT" | tee output/APK_SIGNATURE.txt
-          grep -Fq "Verified using v1 scheme (JAR signing): true" output/APK_SIGNATURE.txt
           grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" output/APK_SIGNATURE.txt
           grep -Fiq "$TEST_CERT_SHA256" output/APK_SIGNATURE.txt
           "$ZIPALIGN" -c -v 4 "$OUT" >/dev/null
@@ -175,6 +175,8 @@ jobs:
           unzip -l "$OUT" | tee output/APK_FILELIST.txt >/dev/null
           grep -Fq "lib/arm64-v8a/" output/APK_FILELIST.txt
           grep -Fq "lib/armeabi-v7a/" output/APK_FILELIST.txt
+          ! grep -Fq "lib/x86/" output/APK_FILELIST.txt
+          ! grep -Fq "lib/x86_64/" output/APK_FILELIST.txt
           ! grep -Fq "about_page/" output/APK_FILELIST.txt
 
           {
@@ -183,10 +185,12 @@ jobs:
             echo "Compile variant: debug (known-good build path), then signature stripped and final-signed"
             echo "Stable reproducible TEST signing baseline starts at Test10"
             echo "Signing certificate SHA256: $TEST_CERT_SHA256"
-            echo "APK Signature Scheme: v1 + v2"
+            echo "APK Signature Scheme: v2 (native on Android 7+, including Android 9)"
             echo "Camera/microphone explicitly optional for TV compatibility"
             echo "TV mode continuous-display protection: keep screen awake + screen-off disconnect timeout forced to 0"
             echo "TV protection reasserted when SessionActivity resumes"
+            echo "TV power settings page hidden because display protection is automatic"
+            echo "APK packaged only for ARMv7 + ARM64"
             echo "Test9 TV focus/display/fullscreen UX retained"
             echo "RDP + RemoteApp/RAIL enabled"
             echo "minSdk 28; ARMv7 + ARM64"
