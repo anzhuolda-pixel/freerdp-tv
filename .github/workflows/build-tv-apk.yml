@@ -37,13 +37,12 @@ jobs:
             git perl make ninja-build pkg-config python3 \
             autoconf automake libtool gettext
 
-      - name: Locate Android SDK manager and install components
+      - name: Install Android SDK components
         shell: bash
         run: |
           set -euxo pipefail
           SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -n 1)"
           test -n "$SDKMANAGER"
-          echo "Using sdkmanager: $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" \
             "platform-tools" \
@@ -52,7 +51,7 @@ jobs:
             "ndk;29.0.13113456" \
             "cmake;4.1.2"
 
-      - name: Checkout pinned FreeRDP 3.31.1 source
+      - name: Checkout pinned FreeRDP source
         shell: bash
         run: |
           set -euxo pipefail
@@ -62,7 +61,6 @@ jobs:
           git -C upstream remote add origin https://github.com/FreeRDP/FreeRDP.git
           git -C upstream fetch --depth=1 origin "$FREERDP_COMMIT"
           git -C upstream checkout -q FETCH_HEAD
-          git -C upstream log -1 --oneline
 
       - name: Apply Android 9 TV Test3 patch
         shell: bash
@@ -76,19 +74,10 @@ jobs:
           sed -i "s/androidx.core:core:1.19.0/androidx.core:core:1.18.0/" "$STUDIO/freeRDPCore/build.gradle"
           sed -i "s/androidx.lifecycle:lifecycle-viewmodel:2.11.0/androidx.lifecycle:lifecycle-viewmodel:2.10.0/" "$STUDIO/freeRDPCore/build.gradle"
           sed -i "s/androidx.lifecycle:lifecycle-livedata:2.11.0/androidx.lifecycle:lifecycle-livedata:2.10.0/" "$STUDIO/freeRDPCore/build.gradle"
-          cat >> "$STUDIO/freeRDPCore/build.gradle" <<'EOF'
-
-configurations.configureEach {
-    resolutionStrategy {
-        force 'androidx.core:core:1.18.0'
-        force 'androidx.core:core-ktx:1.18.0'
-        force 'androidx.lifecycle:lifecycle-viewmodel:2.10.0'
-        force 'androidx.lifecycle:lifecycle-livedata:2.10.0'
-    }
-}
-EOF
+          sed -i "s/sqlcipher-android:4.17.0/sqlcipher-android:4.16.0/" "$STUDIO/freeRDPCore/build.gradle"
+          sed -i "s/androidx.sqlite:sqlite:2.7.0/androidx.sqlite:sqlite:2.6.2/" "$STUDIO/freeRDPCore/build.gradle"
           cat "$STUDIO/release.properties"
-          tail -n 20 "$STUDIO/freeRDPCore/build.gradle"
+          grep -E "androidx.core:core|lifecycle-|sqlcipher|androidx.sqlite" "$STUDIO/freeRDPCore/build.gradle"
 
       - name: Build installable debug APK
         shell: bash
