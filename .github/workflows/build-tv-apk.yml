@@ -1,4 +1,4 @@
-name: Build FreeRDP TV APK
+name: Build FreeRDP Adaptive APK
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       ANDROID_HOME: "/usr/local/lib/android/sdk"
 
     steps:
-      - name: Checkout TV build files
+      - name: Checkout adaptive build files
         uses: actions/checkout@v4
 
       - name: Set up Java 21
@@ -62,12 +62,14 @@ jobs:
           git -C upstream fetch --depth=1 origin "$FREERDP_COMMIT"
           git -C upstream checkout -q FETCH_HEAD
 
-      - name: Apply Android 9 TV Test3 patch
+      - name: Apply Android 9 adaptive Test4 patches
         shell: bash
         run: |
           set -euxo pipefail
           python3 -m py_compile scripts/patch_freerdp_tv_test3.py
+          python3 -m py_compile scripts/patch_adaptive_test4.py
           python3 scripts/patch_freerdp_tv_test3.py upstream
+
           STUDIO=upstream/client/Android/Studio
           sed -i 's/^COMPILE_API=.*/COMPILE_API=36/' "$STUDIO/release.properties"
           sed -i 's/^TOOLS_VERSION=.*/TOOLS_VERSION=36.0.0/' "$STUDIO/release.properties"
@@ -77,11 +79,15 @@ jobs:
           sed -i "s/sqlcipher-android:4.17.0/sqlcipher-android:4.16.0/" "$STUDIO/freeRDPCore/build.gradle"
           sed -i "s/androidx.sqlite:sqlite:2.7.0/androidx.sqlite:sqlite:2.6.2/" "$STUDIO/freeRDPCore/build.gradle"
           sed -i "/implementation project(':freeRDPCore')/a\\    implementation 'androidx.appcompat:appcompat:1.7.1'\n    implementation 'androidx.preference:preference:1.2.1'" "$STUDIO/aFreeRDP/build.gradle"
+
+          python3 scripts/patch_adaptive_test4.py upstream
+
           cat "$STUDIO/release.properties"
           grep -E "androidx.core:core|lifecycle-|sqlcipher|androidx.sqlite" "$STUDIO/freeRDPCore/build.gradle"
-          cat "$STUDIO/aFreeRDP/build.gradle"
+          grep -R "class DeviceMode" -n "$STUDIO/freeRDPCore/src/main/java"
+          grep -R "device_mode" -n "$STUDIO/freeRDPCore/src/main/res/xml/settings_app_tv.xml"
 
-      - name: Build installable debug APK
+      - name: Build installable adaptive APK
         shell: bash
         working-directory: upstream/client/Android/Studio
         run: |
@@ -96,30 +102,35 @@ jobs:
           mkdir -p output
           APK="$(find upstream/client/Android/Studio/aFreeRDP/build/outputs/apk -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" output/FreeRDP-TV-3.31.1-Android9-Test3.apk
-          sha256sum output/FreeRDP-TV-3.31.1-Android9-Test3.apk | tee output/SHA256.txt
+          cp "$APK" output/FreeRDP-Remote-3.31.1-Android9-Adaptive-Test4.apk
+          sha256sum output/FreeRDP-Remote-3.31.1-Android9-Adaptive-Test4.apk | tee output/SHA256.txt
           AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
-          "$AAPT" dump badging output/FreeRDP-TV-3.31.1-Android9-Test3.apk | tee output/APK_BADGING.txt
+          "$AAPT" dump badging output/FreeRDP-Remote-3.31.1-Android9-Adaptive-Test4.apk | tee output/APK_BADGING.txt
           grep -q "sdkVersion:'28'" output/APK_BADGING.txt
           grep -q "arm64-v8a" output/APK_BADGING.txt
           grep -q "armeabi-v7a" output/APK_BADGING.txt
+          grep -q "application-label:'FreeRDP Remote'" output/APK_BADGING.txt
           {
             echo "Base: FreeRDP 3.31.1"
-            echo "Variant: Android 9 TV Test3"
+            echo "Variant: Android 9 Adaptive Test4"
             echo "minSdk: 28"
             echo "ABIs: armeabi-v7a + arm64-v8a"
+            echo "Automatic environment detection: TV vs phone/tablet"
+            echo "Manual mode override: automatic / TV / phone-tablet"
+            echo "TV mode: landscape + D-pad focus"
+            echo "Mobile mode: adaptive orientation + touch retained"
             echo "RDP: enabled"
             echo "RemoteApp/RAIL: enabled by default"
             echo "Multiple saved profiles: enabled"
             echo "Explicit automatic connection target: enabled"
-            echo "Start app after TV boot: optional"
-            echo "Boot-start and auto-connect are independent"
+            echo "Boot start: optional and independent"
+            echo "First-run guidance: adaptive"
           } > output/BUILD_INFO.txt
 
-      - name: Upload APK artifact
+      - name: Upload adaptive APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FreeRDP-TV-Android9-Test3
+          name: FreeRDP-Remote-Android9-Adaptive-Test4
           path: output/
           if-no-files-found: error
           retention-days: 30
