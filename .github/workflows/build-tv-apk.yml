@@ -102,14 +102,19 @@ jobs:
           mkdir -p output
           APK="$(find upstream/client/Android/Studio/aFreeRDP/build/outputs/apk -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          cp "$APK" output/FreeRDP-Remote-3.31.1-Android9-Adaptive-Test4.apk
-          sha256sum output/FreeRDP-Remote-3.31.1-Android9-Adaptive-Test4.apk | tee output/SHA256.txt
+          OUT="output/FreeRDP-Remote-3.31.1-Android9-Adaptive-Test4.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee output/SHA256.txt
+
           AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
-          "$AAPT" dump badging output/FreeRDP-Remote-3.31.1-Android9-Adaptive-Test4.apk | tee output/APK_BADGING.txt
-          grep -q "sdkVersion:'28'" output/APK_BADGING.txt
-          grep -q "arm64-v8a" output/APK_BADGING.txt
-          grep -q "armeabi-v7a" output/APK_BADGING.txt
-          grep -q "application-label:'FreeRDP Remote'" output/APK_BADGING.txt
+          "$AAPT" dump badging "$OUT" | tee output/APK_BADGING.txt
+          grep -Fq "sdkVersion:'28'" output/APK_BADGING.txt
+          grep -Fq "versionName='3.31.1-adaptive-a9-test4'" output/APK_BADGING.txt
+
+          unzip -l "$OUT" | tee output/APK_FILELIST.txt >/dev/null
+          grep -Fq "lib/arm64-v8a/" output/APK_FILELIST.txt
+          grep -Fq "lib/armeabi-v7a/" output/APK_FILELIST.txt
+
           {
             echo "Base: FreeRDP 3.31.1"
             echo "Variant: Android 9 Adaptive Test4"
