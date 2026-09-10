@@ -36,7 +36,11 @@ def main():
                         "bump version name")
     data = replace_once(data, "VERSION_CODE=331109", "VERSION_CODE=331110",
                         "bump version code")
-    data += "\nRELEASE_STORE_FILE=billion-rdp-test.p12\n"
+    # release.properties is consumed from the aFreeRDP module. The keystore is
+    # generated at the Studio project root, so the module-relative path must
+    # point one directory up. A plain filename makes Gradle look in aFreeRDP/
+    # and causes assembleRelease to fail during APK packaging.
+    data += "\nRELEASE_STORE_FILE=../billion-rdp-test.p12\n"
     data += "RELEASE_KEY_ALIAS=billion-rdp\n"
     data += "RELEASE_KEY_PASSWORD=BillionRdpTest10\n"
     data += "RELEASE_STORE_PASSWORD=BillionRdpTest10\n"
