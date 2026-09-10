@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y git perl make ninja-build pkg-config python3 python3-pip autoconf automake libtool gettext
+          sudo apt-get install -y git perl make ninja-build pkg-config python3 python3-pip autoconf automake libtool gettext zip unzip
           python3 -m pip install --break-system-packages "cryptography==46.0.4"
 
       - name: Install Android SDK components
@@ -100,30 +100,44 @@ jobs:
           grep -F 'android:name="android.hardware.camera" android:required="false"' "$STUDIO/aFreeRDP/src/main/AndroidManifest.xml"
           grep -F 'android:name="android.hardware.microphone" android:required="false"' "$STUDIO/aFreeRDP/src/main/AndroidManifest.xml"
 
-      - name: Build release APK
+      - name: Build APK using proven debug variant
         shell: bash
         working-directory: upstream/client/Android/Studio
         run: |
-          set -euxo pipefail
+          set -uo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/output"
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace :aFreeRDP:assembleRelease
+          set +e
+          ./gradlew --no-daemon --stacktrace :aFreeRDP:assembleDebug 2>&1 | tee "$GITHUB_WORKSPACE/output/GRADLE_BUILD.txt"
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          exit "$STATUS"
 
-      - name: Align, force v1+v2 signing, and verify APK
+      - name: Strip debug signature, align, sign v1+v2, and verify APK
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p output
           STUDIO=upstream/client/Android/Studio
-          APK="$(find "$STUDIO/aFreeRDP/build/outputs/apk" -type f -path '*release*' -name '*.apk' | head -n 1)"
+          APK=""
+          while IFS= read -r CANDIDATE; do
+            if unzip -l "$CANDIDATE" | grep -Fq "lib/arm64-v8a/" && unzip -l "$CANDIDATE" | grep -Fq "lib/armeabi-v7a/"; then
+              APK="$CANDIDATE"
+              break
+            fi
+          done < <(find "$STUDIO/aFreeRDP/build/outputs/apk/debug" -type f -name '*.apk' | sort)
           test -n "$APK"
 
           AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
           APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
           ZIPALIGN="$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign"
+          UNSIGNED="output/Test10-signature-stripped.apk"
           ALIGNED="output/Test10-aligned.apk"
           OUT="output/BILLION-RDP-REMOTE-3.31.1-Android9-Adaptive-Test10.apk"
 
-          "$ZIPALIGN" -f -p 4 "$APK" "$ALIGNED"
+          cp "$APK" "$UNSIGNED"
+          zip -q -d "$UNSIGNED" 'META-INF/*.RSA' 'META-INF/*.DSA' 'META-INF/*.EC' 'META-INF/*.SF' 'META-INF/*.MF' || true
+          "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$ALIGNED"
           "$APKSIGNER" sign \
             --ks "$STUDIO/billion-rdp-test.p12" \
             --ks-type PKCS12 \
@@ -134,9 +148,10 @@ jobs:
             --v1-signing-enabled true \
             --v2-signing-enabled true \
             --v3-signing-enabled false \
+            --v4-signing-enabled false \
             --out "$OUT" \
             "$ALIGNED"
-          rm -f "$ALIGNED"
+          rm -f "$UNSIGNED" "$ALIGNED"
 
           sha256sum "$OUT" | tee output/SHA256.txt
           "$AAPT" dump badging "$OUT" | tee output/APK_BADGING.txt
@@ -161,6 +176,7 @@ jobs:
           {
             echo "Base: FreeRDP 3.31.1"
             echo "Variant: BILLION RDP REMOTE Android 9 Adaptive Test10"
+            echo "Compile variant: debug (known-good build path), then signature stripped and final-signed"
             echo "Stable reproducible TEST signing baseline starts at Test10"
             echo "Signing certificate SHA256: $TEST_CERT_SHA256"
             echo "APK Signature Scheme: v1 + v2"
@@ -170,7 +186,8 @@ jobs:
             echo "minSdk 28; ARMv7 + ARM64"
           } > output/BUILD_INFO.txt
 
-      - name: Upload adaptive APK artifact
+      - name: Upload build output and diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: BILLION-RDP-REMOTE-Android9-Adaptive-Test10
