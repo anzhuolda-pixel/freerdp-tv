@@ -36,13 +36,23 @@ def main():
     if not studio.is_dir():
         fail("FreeRDP Android Studio directory not found")
 
-    # Version
+    # Version. Test7 accidentally replaced the whole VERSION_NAME line with
+    # the bare version string. Repair either form here, then continue as Test8.
     props = studio / "release.properties"
     data = read(props)
-    data = replace_once(data,
-        "VERSION_NAME=3.31.1-billion-a9-test7",
-        VERSION,
-        "update Test8 version name")
+    if "VERSION_NAME=3.31.1-billion-a9-test7" in data:
+        data = replace_once(data,
+            "VERSION_NAME=3.31.1-billion-a9-test7",
+            "VERSION_NAME=" + VERSION,
+            "update Test8 version name")
+    elif "3.31.1-billion-a9-test7" in data:
+        data = replace_once(data,
+            "3.31.1-billion-a9-test7",
+            "VERSION_NAME=" + VERSION,
+            "repair Test7 version line and update Test8")
+    else:
+        fail("Test7 version marker not found")
+
     data = replace_once(data,
         "VERSION_CODE=331107",
         "VERSION_CODE=331108",
