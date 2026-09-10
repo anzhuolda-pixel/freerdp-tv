@@ -30,23 +30,24 @@ def main():
     if not studio.is_dir():
         fail("Android Studio project not found")
 
-    # Version bump from Test9.
     props = studio / "release.properties"
     data = read(props)
     data = replace_once(data, "VERSION_NAME=3.31.1-billion-a9-test9", "VERSION_NAME=" + VERSION,
                         "bump version name")
     data = replace_once(data, "VERSION_CODE=331109", "VERSION_CODE=331110",
                         "bump version code")
-
-    # Fixed signing baseline. Test10 and later builds must use this same key.
-    data += "\nRELEASE_STORE_FILE=billion-rdp-test.jks\n"
+    data += "\nRELEASE_STORE_FILE=billion-rdp-test.p12\n"
     data += "RELEASE_KEY_ALIAS=billion-rdp\n"
     data += "RELEASE_KEY_PASSWORD=BillionRdpTest10\n"
     data += "RELEASE_STORE_PASSWORD=BillionRdpTest10\n"
     write(props, data)
 
-    # Explicitly mark optional hardware. CAMERA permission otherwise makes some TV launchers/stores
-    # infer a required camera and reject or hide the APK on camera-less televisions.
+    gradle = studio / "aFreeRDP" / "build.gradle"
+    data = read(gradle)
+    data = replace_once(data, 'storeType "jks"', 'storeType "pkcs12"',
+                        "switch release signer to PKCS12")
+    write(gradle, data)
+
     manifest = studio / "aFreeRDP" / "src" / "main" / "AndroidManifest.xml"
     data = read(manifest)
     marker = "    <uses-feature android:name=\"android.hardware.touchscreen\" android:required=\"false\" />\n"
@@ -62,7 +63,7 @@ def main():
     write(manifest, data)
 
     print("Test10 stability patch applied")
-    print("Fixed signing baseline + camera/microphone optional + Test9 UX retained")
+    print("Reproducible test signing + camera/microphone optional + Test9 UX retained")
 
 if __name__ == "__main__":
     main()
