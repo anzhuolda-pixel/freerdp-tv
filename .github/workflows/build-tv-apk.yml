@@ -44,15 +44,14 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -n 1)"
           if [ -z "$SDKMANAGER" ]; then
             echo "sdkmanager not found under $ANDROID_SDK_ROOT"
-            find "$ANDROID_SDK_ROOT" -maxdepth 4 -type f -name sdkmanager -print || true
             exit 1
           fi
           echo "Using sdkmanager: $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" \
             "platform-tools" \
-            "platforms;android-37" \
-            "build-tools;37.0.0" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
             "ndk;29.0.13113456" \
             "cmake;4.1.2"
 
@@ -74,6 +73,8 @@ jobs:
           set -euxo pipefail
           python3 -m py_compile scripts/patch_freerdp_tv_test3.py
           python3 scripts/patch_freerdp_tv_test3.py upstream
+          sed -i 's/^COMPILE_API=.*/COMPILE_API=36/' upstream/client/Android/Studio/release.properties
+          sed -i 's/^TOOLS_VERSION=.*/TOOLS_VERSION=36.0.0/' upstream/client/Android/Studio/release.properties
           cat upstream/client/Android/Studio/release.properties
 
       - name: Build installable debug APK
@@ -93,7 +94,7 @@ jobs:
           test -n "$APK"
           cp "$APK" output/FreeRDP-TV-3.31.1-Android9-Test3.apk
           sha256sum output/FreeRDP-TV-3.31.1-Android9-Test3.apk | tee output/SHA256.txt
-          AAPT="$ANDROID_SDK_ROOT/build-tools/37.0.0/aapt"
+          AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
           "$AAPT" dump badging output/FreeRDP-TV-3.31.1-Android9-Test3.apk | tee output/APK_BADGING.txt
           grep -q "sdkVersion:'28'" output/APK_BADGING.txt
           grep -q "arm64-v8a" output/APK_BADGING.txt
