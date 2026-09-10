@@ -136,8 +136,12 @@ def main():
             "import DeviceMode in LibFreeRDP")
     args_anchor = '''\t\targs.add(TAG);\n\t\targs.add("/gdi:sw");\n'''
     args_new = args_anchor + '''\t\tfinal String networkProfile =\n\t\t    DeviceMode.isTv(context) ? "/network:lan" : "/network:auto";\n'''
-    data = replace_once(data, args_anchor, args_new,
-                        "select LAN quality profile for TV")
+    anchor_count = data.count(args_anchor)
+    if anchor_count != 2:
+        fail(f"select LAN quality profile for TV: expected 2 matches, found {anchor_count}")
+    # Both bookmark-based and URI-based connection builders need the same
+    # networkProfile variable because the upstream file has this setup twice.
+    data = data.replace(args_anchor, args_new)
     auto_count = data.count('args.add("/network:auto");')
     if auto_count < 2:
         fail("expected FreeRDP network:auto flags not found")
