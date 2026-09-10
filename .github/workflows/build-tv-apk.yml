@@ -1,4 +1,4 @@
-name: Build Baihong RDP REMOTE Adaptive APK
+name: Build BILLION RDP REMOTE Adaptive APK
 
 on:
   push:
@@ -62,13 +62,14 @@ jobs:
           git -C upstream fetch --depth=1 origin "$FREERDP_COMMIT"
           git -C upstream checkout -q FETCH_HEAD
 
-      - name: Apply Android 9 adaptive Test5 patches
+      - name: Apply Android 9 adaptive Test6 patches
         shell: bash
         run: |
           set -euxo pipefail
           python3 -m py_compile scripts/patch_freerdp_tv_test3.py
           python3 -m py_compile scripts/patch_adaptive_test4.py
           python3 -m py_compile scripts/patch_brand_ux_test5.py
+          python3 -m py_compile scripts/patch_billion_brand_test6.py
           python3 scripts/patch_freerdp_tv_test3.py upstream
 
           STUDIO=upstream/client/Android/Studio
@@ -83,13 +84,11 @@ jobs:
 
           python3 scripts/patch_adaptive_test4.py upstream
           python3 scripts/patch_brand_ux_test5.py upstream
+          python3 scripts/patch_billion_brand_test6.py upstream
 
           cat "$STUDIO/release.properties"
-          grep -E "androidx.core:core|lifecycle-|sqlcipher|androidx.sqlite" "$STUDIO/freeRDPCore/build.gradle"
-          grep -R "class DeviceMode" -n "$STUDIO/freeRDPCore/src/main/java"
-          grep -R "device_mode" -n "$STUDIO/freeRDPCore/src/main/res/xml/settings_app_tv.xml"
-          grep -R "百宏 RDP REMOTE" -n "$STUDIO/aFreeRDP/src/main/res" "$STUDIO/freeRDPCore/src/main/res/values-zh"
-          grep -R "autoConnectScheduled" -n "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/HomeActivity.java"
+          grep -R "BILLION RDP REMOTE" -n "$STUDIO/aFreeRDP/src/main/res" "$STUDIO/freeRDPCore/src/main/res/values" "$STUDIO/freeRDPCore/src/main/res/values-zh"
+          ! grep -R "百宏 RDP REMOTE\|Baihong RDP REMOTE" -n "$STUDIO/aFreeRDP/src/main/res" "$STUDIO/freeRDPCore/src/main/res/values" "$STUDIO/freeRDPCore/src/main/res/values-zh"
 
       - name: Build installable adaptive APK
         shell: bash
@@ -106,15 +105,15 @@ jobs:
           mkdir -p output
           APK="$(find upstream/client/Android/Studio/aFreeRDP/build/outputs/apk -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          OUT="output/Baihong-RDP-REMOTE-3.31.1-Android9-Adaptive-Test5.apk"
+          OUT="output/BILLION-RDP-REMOTE-3.31.1-Android9-Adaptive-Test6.apk"
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee output/SHA256.txt
 
           AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
           "$AAPT" dump badging "$OUT" | tee output/APK_BADGING.txt
           grep -Fq "sdkVersion:'28'" output/APK_BADGING.txt
-          grep -Fq "versionName='3.31.1-baihong-a9-test5'" output/APK_BADGING.txt
-          grep -Fq "application-label:'百宏 RDP REMOTE'" output/APK_BADGING.txt
+          grep -Fq "versionName='3.31.1-billion-a9-test6'" output/APK_BADGING.txt
+          grep -Fq "application-label:'BILLION RDP REMOTE'" output/APK_BADGING.txt
 
           unzip -l "$OUT" | tee output/APK_FILELIST.txt >/dev/null
           grep -Fq "lib/arm64-v8a/" output/APK_FILELIST.txt
@@ -123,29 +122,22 @@ jobs:
 
           {
             echo "Base: FreeRDP 3.31.1"
-            echo "Variant: Baihong RDP REMOTE Android 9 Adaptive Test5"
-            echo "App label: 百宏 RDP REMOTE"
+            echo "Variant: BILLION RDP REMOTE Android 9 Adaptive Test6"
+            echo "App label: BILLION RDP REMOTE"
             echo "minSdk: 28"
             echo "ABIs: armeabi-v7a + arm64-v8a"
             echo "Automatic environment detection: TV vs phone/tablet"
             echo "Manual mode override: automatic / TV / phone-tablet"
-            echo "TV mode: landscape + D-pad focus"
-            echo "Mobile mode: adaptive orientation + touch retained"
-            echo "RDP: enabled"
-            echo "RemoteApp/RAIL: enabled by default"
-            echo "Multiple saved profiles: enabled"
-            echo "Explicit automatic connection target: enabled"
-            echo "Boot start: optional and independent"
-            echo "Auto-connect: guarded against rotation/recreation and background launches"
-            echo "Boot receiver: non-exported"
-            echo "Custom launcher identity: enabled"
-            echo "First-run guidance: adaptive"
+            echo "RDP and RemoteApp/RAIL enabled"
+            echo "Multiple saved profiles and explicit auto-connect target enabled"
+            echo "Boot start optional and independent"
+            echo "Auto-connect guarded against background/recreation launches"
           } > output/BUILD_INFO.txt
 
       - name: Upload adaptive APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Baihong-RDP-REMOTE-Android9-Adaptive-Test5
+          name: BILLION-RDP-REMOTE-Android9-Adaptive-Test6
           path: output/
           if-no-files-found: error
           retention-days: 30
