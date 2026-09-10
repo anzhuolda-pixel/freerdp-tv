@@ -4,22 +4,27 @@ from pathlib import Path
 
 VERSION = "3.31.1-billion-a9-test10"
 
+
 def fail(msg):
     raise SystemExit("PATCH ERROR: " + msg)
+
 
 def read(path):
     if not path.is_file():
         fail("missing file: " + str(path))
     return path.read_text(encoding="utf-8")
 
+
 def write(path, data):
     path.write_text(data, encoding="utf-8", newline="\n")
+
 
 def replace_once(data, old, new, desc):
     c = data.count(old)
     if c != 1:
         fail(f"{desc}: expected 1 match, found {c}")
     return data.replace(old, new, 1)
+
 
 def main():
     if len(sys.argv) != 2:
@@ -36,10 +41,6 @@ def main():
                         "bump version name")
     data = replace_once(data, "VERSION_CODE=331109", "VERSION_CODE=331110",
                         "bump version code")
-    # release.properties is consumed from the aFreeRDP module. The keystore is
-    # generated at the Studio project root, so the module-relative path must
-    # point one directory up. A plain filename makes Gradle look in aFreeRDP/
-    # and causes assembleRelease to fail during APK packaging.
     data += "\nRELEASE_STORE_FILE=../billion-rdp-test.p12\n"
     data += "RELEASE_KEY_ALIAS=billion-rdp\n"
     data += "RELEASE_KEY_PASSWORD=BillionRdpTest10\n"
@@ -51,6 +52,23 @@ def main():
     data = replace_once(data, 'storeType "jks"', 'storeType "pkcs12"',
                         "switch release signer to PKCS12")
     write(gradle, data)
+
+    # The workflow's Android-9 dependency backport historically contained one
+    # malformed Maven coordinate: androidx.lifecycle-viewmodel:2.10.0.
+    # Gradle interprets that as group/artifact with an empty version and fails
+    # in checkDebugAarMetadata before Java/native compilation starts. Repair it
+    # here and assert the final coordinate so this failure cannot silently recur.
+    core_gradle = studio / "freeRDPCore" / "build.gradle"
+    data = read(core_gradle)
+    malformed = "androidx.lifecycle-viewmodel:2.10.0"
+    correct = "androidx.lifecycle:lifecycle-viewmodel:2.10.0"
+    if malformed in data:
+        data = data.replace(malformed, correct, 1)
+    if correct not in data:
+        fail("lifecycle-viewmodel dependency is not the expected Android-9 backport")
+    if "androidx.lifecycle:lifecycle-livedata:2.10.0" not in data:
+        fail("lifecycle-livedata dependency is not the expected Android-9 backport")
+    write(core_gradle, data)
 
     manifest = studio / "aFreeRDP" / "src" / "main" / "AndroidManifest.xml"
     data = read(manifest)
@@ -67,7 +85,8 @@ def main():
     write(manifest, data)
 
     print("Test10 stability patch applied")
-    print("Reproducible test signing + camera/microphone optional + Test9 UX retained")
+    print("Dependency repair + reproducible test signing + camera/microphone optional + Test9 UX retained")
+
 
 if __name__ == "__main__":
     main()
