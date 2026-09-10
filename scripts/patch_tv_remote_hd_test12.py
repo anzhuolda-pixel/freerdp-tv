@@ -44,9 +44,6 @@ def main():
     if not studio.is_dir():
         fail("FreeRDP Android Studio directory not found")
 
-    # ------------------------------------------------------------------
-    # 1. Version. Test12 continues the stable Test10+ signing baseline.
-    # ------------------------------------------------------------------
     props = studio / "release.properties"
     data = read(props)
     data = replace_once(data, "VERSION_NAME=3.31.1-billion-a9-test11",
@@ -55,13 +52,6 @@ def main():
                         "update Test12 version code")
     write(props, data)
 
-    # ------------------------------------------------------------------
-    # 2. TV bookmark row: deterministic D-pad navigation.
-    #    Row focus + OK/Enter = connect.
-    #    RIGHT from row = focus the three-dot menu.
-    #    LEFT from three-dot menu = back to row.
-    #    MENU key on the row also opens the same action menu.
-    # ------------------------------------------------------------------
     item = studio / "freeRDPCore/src/main/res/layout/bookmark_list_item.xml"
     data = read(item)
     data = replace_once(
@@ -70,8 +60,6 @@ def main():
         '<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"\n    android:id="@+id/bookmark_row"\n    android:layout_width="match_parent"',
         "give bookmark row an id")
 
-    # Test4 already made both views focusable. Add an explicit focus path so
-    # OEM TV firmware does not have to guess between parent/child focusables.
     root_focus = '''    android:focusable="true"\n    android:focusableInTouchMode="false"\n    android:minHeight="?attr/listPreferredItemHeight">'''
     root_focus_new = '''    android:focusable="true"\n    android:focusableInTouchMode="false"\n    android:nextFocusRight="@id/bookmark_icon2"\n    android:minHeight="?attr/listPreferredItemHeight">'''
     data = replace_once(data, root_focus, root_focus_new,
@@ -83,58 +71,23 @@ def main():
                         "route three-dot menu left focus")
     write(item, data)
 
-    # Dedicated high-contrast focus drawables. Only applied at runtime in TV
-    # mode so phone/tablet ripple behaviour remains unchanged.
     row_focus = '''<?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_focused="true">
-        <shape android:shape="rectangle">
-            <solid android:color="#FFF0F1" />
-            <stroke android:width="3dp" android:color="#B5121B" />
-            <corners android:radius="6dp" />
-        </shape>
-    </item>
-    <item android:state_pressed="true">
-        <shape android:shape="rectangle">
-            <solid android:color="#FFE2E5" />
-            <stroke android:width="3dp" android:color="#B5121B" />
-            <corners android:radius="6dp" />
-        </shape>
-    </item>
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="@android:color/transparent" />
-        </shape>
-    </item>
+    <item android:state_focused="true"><shape android:shape="rectangle"><solid android:color="#FFF0F1" /><stroke android:width="3dp" android:color="#B5121B" /><corners android:radius="6dp" /></shape></item>
+    <item android:state_pressed="true"><shape android:shape="rectangle"><solid android:color="#FFE2E5" /><stroke android:width="3dp" android:color="#B5121B" /><corners android:radius="6dp" /></shape></item>
+    <item><shape android:shape="rectangle"><solid android:color="@android:color/transparent" /></shape></item>
 </selector>
 '''
-    write(studio / "freeRDPCore/src/main/res/drawable/billion_bookmark_tv_focus.xml",
-          row_focus)
+    write(studio / "freeRDPCore/src/main/res/drawable/billion_bookmark_tv_focus.xml", row_focus)
 
     more_focus = '''<?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_focused="true">
-        <shape android:shape="rectangle">
-            <solid android:color="#B5121B" />
-            <stroke android:width="2dp" android:color="#FFFFFF" />
-            <corners android:radius="8dp" />
-        </shape>
-    </item>
-    <item android:state_pressed="true">
-        <shape android:shape="rectangle">
-            <solid android:color="#8E0E15" />
-            <corners android:radius="8dp" />
-        </shape>
-    </item>
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="@android:color/transparent" />
-        </shape>
-    </item>
+    <item android:state_focused="true"><shape android:shape="rectangle"><solid android:color="#B5121B" /><stroke android:width="2dp" android:color="#FFFFFF" /><corners android:radius="8dp" /></shape></item>
+    <item android:state_pressed="true"><shape android:shape="rectangle"><solid android:color="#8E0E15" /><corners android:radius="8dp" /></shape></item>
+    <item><shape android:shape="rectangle"><solid android:color="@android:color/transparent" /></shape></item>
 </selector>
 '''
-    write(studio / "freeRDPCore/src/main/res/drawable/billion_more_tv_focus.xml",
-          more_focus)
+    write(studio / "freeRDPCore/src/main/res/drawable/billion_more_tv_focus.xml", more_focus)
 
     adapter = studio / "freeRDPCore/src/main/java/com/freerdp/freerdpcore/utils/BookmarkListAdapter.java"
     data = read(adapter)
@@ -149,32 +102,27 @@ def main():
                             "import DeviceMode")
 
     click_block = '''\t\tholder.itemView.setOnClickListener(v -> {\n\t\t\tif (callbacks != null)\n\t\t\t\tcallbacks.onItemClick(v.getTag().toString());\n\t\t});\n'''
-    click_new = click_block + '''\n\t\tconfigureTvRemoteNavigation(holder, bookmark, refStr);\n'''
-    data = replace_once(data, click_block, click_new,
+    data = replace_once(data, click_block,
+                        click_block + '''\n\t\tconfigureTvRemoteNavigation(holder, bookmark, refStr);\n''',
                         "install TV bookmark key navigation")
 
     get_count = '''\t@Override public int getItemCount()\n\t{\n'''
-    helper = '''\tprivate void configureTvRemoteNavigation(ViewHolder holder, BookmarkBase bookmark,\n\t                                               String refStr)\n\t{\n\t\tif (!DeviceMode.isTv(holder.itemView.getContext()))\n\t\t\treturn;\n\n\t\tholder.itemView.setBackgroundResource(R.drawable.billion_bookmark_tv_focus);\n\t\tholder.itemView.setFocusable(true);\n\t\tholder.itemView.setFocusableInTouchMode(false);\n\t\tholder.itemView.setContentDescription(holder.itemView.getContext().getString(\n\t\t    R.string.tv_connection_row_description, bookmark.getLabel()));\n\n\t\tfinal boolean hasMenu = actionsEnabled &&\n\t\t    holder.binding.bookmarkIcon2.getVisibility() == View.VISIBLE;\n\t\tif (hasMenu)\n\t\t{\n\t\t\tholder.binding.bookmarkIcon2.setFocusable(true);\n\t\t\tholder.binding.bookmarkIcon2.setFocusableInTouchMode(false);\n\t\t\tholder.binding.bookmarkIcon2.setBackgroundResource(R.drawable.billion_more_tv_focus);\n\t\t\tholder.binding.bookmarkIcon2.setContentDescription(\n\t\t\t    holder.itemView.getContext().getString(R.string.tv_more_actions_description));\n\t\t\tholder.binding.bookmarkIcon2.setOnKeyListener((v, keyCode, event) -> {\n\t\t\t\tif (event.getAction() != KeyEvent.ACTION_DOWN)\n\t\t\t\t\treturn false;\n\t\t\t\tif (keyCode == KeyEvent.KEYCODE_DPAD_LEFT)\n\t\t\t\t{\n\t\t\t\t\tholder.itemView.requestFocus();\n\t\t\t\t\treturn true;\n\t\t\t\t}\n\t\t\t\tif (keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||\n\t\t\t\t    keyCode == KeyEvent.KEYCODE_ENTER ||\n\t\t\t\t    keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)\n\t\t\t\t{\n\t\t\t\t\tv.performClick();\n\t\t\t\t\treturn true;\n\t\t\t\t}\n\t\t\t\treturn false;\n\t\t\t});\n\t\t}\n\n\t\tholder.itemView.setOnKeyListener((v, keyCode, event) -> {\n\t\t\tif (event.getAction() != KeyEvent.ACTION_DOWN)\n\t\t\t\treturn false;\n\t\t\tif (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && hasMenu)\n\t\t\t{\n\t\t\t\tholder.binding.bookmarkIcon2.requestFocus();\n\t\t\t\treturn true;\n\t\t\t}\n\t\t\tif (keyCode == KeyEvent.KEYCODE_MENU && hasMenu)\n\t\t\t{\n\t\t\t\tholder.binding.bookmarkIcon2.performClick();\n\t\t\t\treturn true;\n\t\t\t}\n\t\t\tif (keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||\n\t\t\t    keyCode == KeyEvent.KEYCODE_ENTER ||\n\t\t\t    keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)\n\t\t\t{\n\t\t\t\tif (callbacks != null && refStr != null && !refStr.isEmpty())\n\t\t\t\t\tcallbacks.onItemClick(refStr);\n\t\t\t\treturn true;\n\t\t\t}\n\t\t\treturn false;\n\t\t});\n\t}\n\n'''
+    helper = '''\tprivate void configureTvRemoteNavigation(ViewHolder holder, BookmarkBase bookmark,\n\t                                               String refStr)\n\t{\n\t\tif (!DeviceMode.isTv(holder.itemView.getContext()))\n\t\t\treturn;\n\n\t\tholder.itemView.setBackgroundResource(R.drawable.billion_bookmark_tv_focus);\n\t\tholder.itemView.setFocusable(true);\n\t\tholder.itemView.setFocusableInTouchMode(false);\n\t\tholder.itemView.setContentDescription(holder.itemView.getContext().getString(\n\t\t    R.string.tv_connection_row_description, bookmark.getLabel()));\n\n\t\tfinal boolean hasMenu = actionsEnabled &&\n\t\t    holder.binding.bookmarkIcon2.getVisibility() == View.VISIBLE;\n\t\tif (hasMenu)\n\t\t{\n\t\t\tholder.binding.bookmarkIcon2.setFocusable(true);\n\t\t\tholder.binding.bookmarkIcon2.setFocusableInTouchMode(false);\n\t\t\tholder.binding.bookmarkIcon2.setBackgroundResource(R.drawable.billion_more_tv_focus);\n\t\t\tholder.binding.bookmarkIcon2.setContentDescription(\n\t\t\t    holder.itemView.getContext().getString(R.string.tv_more_actions_description));\n\t\t\tholder.binding.bookmarkIcon2.setOnKeyListener((v, keyCode, event) -> {\n\t\t\t\tif (event.getAction() != KeyEvent.ACTION_DOWN) return false;\n\t\t\t\tif (keyCode == KeyEvent.KEYCODE_DPAD_LEFT)\n\t\t\t\t{ holder.itemView.requestFocus(); return true; }\n\t\t\t\tif (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)\n\t\t\t\t{ v.performClick(); return true; }\n\t\t\t\treturn false;\n\t\t\t});\n\t\t}\n\n\t\tholder.itemView.setOnKeyListener((v, keyCode, event) -> {\n\t\t\tif (event.getAction() != KeyEvent.ACTION_DOWN) return false;\n\t\t\tif (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && hasMenu)\n\t\t\t{ holder.binding.bookmarkIcon2.requestFocus(); return true; }\n\t\t\tif (keyCode == KeyEvent.KEYCODE_MENU && hasMenu)\n\t\t\t{ holder.binding.bookmarkIcon2.performClick(); return true; }\n\t\t\tif (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)\n\t\t\t{\n\t\t\t\tif (callbacks != null && refStr != null && !refStr.isEmpty()) callbacks.onItemClick(refStr);\n\t\t\t\treturn true;\n\t\t\t}\n\t\t\treturn false;\n\t\t});\n\t}\n\n'''
     data = replace_once(data, get_count, helper + get_count,
                         "add deterministic TV remote focus helper")
     write(adapter, data)
 
-    # ------------------------------------------------------------------
-    # 3. TV full-screen/high-quality display policy.
-    #    Automatic resolution still maps 1:1 to the Android render viewport;
-    #    forcing an unsupported 4K size would create scaling/scrolling blur.
-    #    Improve what is safe and deterministic: maximum viewport, 32-bit,
-    #    GFX, font smoothing and LAN quality profile.
-    # ------------------------------------------------------------------
     session = studio / "freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/SessionActivity.java"
     data = read(session)
     old = '''\t\tboolean hideStatusBar = ApplicationSettingsActivity.getHideStatusBar(this);\n\t\tboolean hideNavBar = ApplicationSettingsActivity.getHideNavigationBar(this);\n'''
     new = '''\t\tboolean tvDisplay = DeviceMode.isTv(this);\n\t\tboolean hideStatusBar = tvDisplay || ApplicationSettingsActivity.getHideStatusBar(this);\n\t\tboolean hideNavBar = tvDisplay || ApplicationSettingsActivity.getHideNavigationBar(this);\n'''
-    data = replace_once(data, old, new,
-                        "force immersive full-screen bars hidden on TV")
+    count = data.count(old)
+    if count != 2:
+        fail(f"force immersive full-screen bars hidden on TV: expected 2 matches, found {count}")
+    data = data.replace(old, new)
 
     quality_anchor = '''\t\tBookmarkBase.ScreenSettings screenSettings =\n\t\t    session.getBookmark().getActiveScreenSettings();\n\t\tLog.v(TAG, "Screen Resolution: " + screenSettings.getResolutionString());\n'''
-    quality_new = quality_anchor + '''\t\tif (DeviceMode.isTv(this))\n\t\t{\n\t\t\t// Public-display TV mode favours text/image fidelity over bandwidth.\n\t\t\tscreenSettings.setColors(32);\n\t\t\tBookmarkBase.PerformanceFlags tvFlags =\n\t\t\t    session.getBookmark().getActivePerformanceFlags();\n\t\t\ttvFlags.setGfx(true);\n\t\t\ttvFlags.setH264(true);\n\t\t\ttvFlags.setFontSmoothing(true);\n\t\t\tLog.i(TAG, "TV HD mode: viewport=" + screen_width + "x" + screen_height +\n\t\t\t           ", 32bpp, GFX, font smoothing");\n\t\t}\n'''
+    quality_new = quality_anchor + '''\t\tif (DeviceMode.isTv(this))\n\t\t{\n\t\t\tscreenSettings.setColors(32);\n\t\t\tBookmarkBase.PerformanceFlags tvFlags = session.getBookmark().getActivePerformanceFlags();\n\t\t\ttvFlags.setGfx(true);\n\t\t\ttvFlags.setH264(true);\n\t\t\ttvFlags.setFontSmoothing(true);\n\t\t\tLog.i(TAG, "TV HD mode: viewport=" + screen_width + "x" + screen_height + ", 32bpp, GFX, font smoothing");\n\t\t}\n'''
     data = replace_once(data, quality_anchor, quality_new,
                         "apply TV high-quality RDP flags")
     write(session, data)
@@ -196,8 +144,6 @@ def main():
     data = data.replace('args.add("/network:auto");', 'args.add(networkProfile);')
     write(lib, data)
 
-    # Make the high-quality policy visible but not configurable: TV installers
-    # should not have to remember several technical toggles.
     tv_xml = studio / "freeRDPCore/src/main/res/xml/settings_app_tv.xml"
     data = read(tv_xml)
     quality_pref = '''\n    <Preference\n        android:key="ui.tv_hd_display_status"\n        android:title="@string/settings_tv_hd_display"\n        android:summary="@string/settings_tv_hd_display_summary"\n        android:selectable="false" />\n\n'''
@@ -205,8 +151,6 @@ def main():
                               "add TV HD display status")
     write(tv_xml, data)
 
-    # Existing/new TV profiles should default to font smoothing as well. The
-    # connect-time policy above also covers profiles created in older versions.
     bookmark = studio / "freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/BookmarkActivity.java"
     data = read(bookmark)
     default_anchor = '''\t\t\t\t    .putInt("bookmark.scale_device", 100)\n\t\t\t\t    .apply();\n'''
