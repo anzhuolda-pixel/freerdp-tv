@@ -1,0 +1,108 @@
+name: Build FreeRDP TV APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    env:
+      FREERDP_COMMIT: "50c9f7470d9da3a45e1ebb5ee5fba14140c3fbb3"
+      ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+      ANDROID_HOME: "/usr/local/lib/android/sdk"
+
+    steps:
+      - name: Checkout TV build files
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install host build tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            git perl make ninja-build pkg-config python3 \
+            autoconf automake libtool gettext
+
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-37" \
+            "build-tools;37.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;4.1.2"
+
+      - name: Checkout pinned FreeRDP 3.31.1 source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf work
+          git clone https://github.com/FreeRDP/FreeRDP.git work/src
+          cd work/src
+          git checkout --detach "${FREERDP_COMMIT}"
+          test "$(git rev-parse HEAD)" = "${FREERDP_COMMIT}"
+
+      - name: Apply Android 9 TV features
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 scripts/patch_freerdp_tv.py work/src
+          cat work/src/client/Android/Studio/release.properties
+
+      - name: Build installable debug APK
+        shell: bash
+        working-directory: work/src/client/Android/Studio
+        run: |
+          set -euxo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :aFreeRDP:assembleDebug
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p output
+          APK="$(find work/src/client/Android/Studio/aFreeRDP/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          test -n "${APK}"
+          cp "${APK}" "output/FreeRDP-TV-3.31.1-Android9-Test2.apk"
+          sha256sum "output/FreeRDP-TV-3.31.1-Android9-Test2.apk" | tee output/SHA256.txt
+          cat > output/BUILD_INFO.txt <<'EOF'
+          Base: FreeRDP 3.31.1
+          Variant: TV Android 9 Test2
+          minSdk: 28
+          targetSdk: 28
+          ABI: armeabi-v7a + arm64-v8a
+          RDP: enabled
+          RemoteApp/RAIL: enabled by default
+          Auto-connect last connection: optional
+          Boot auto-start: optional
+          Auto-connect delay: 0/3/5/10/15 sec
+          TV launcher: enabled
+          Touchscreen requirement: disabled
+          Orientation: landscape
+          EOF
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FreeRDP-TV-Android9-Test2
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
