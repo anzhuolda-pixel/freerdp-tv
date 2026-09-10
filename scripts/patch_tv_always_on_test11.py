@@ -56,6 +56,18 @@ def main():
     write(props, data)
 
     # ------------------------------------------------------------------
+    # The TV/phone build only needs ARM. Apply ABI filters at the app module
+    # too, so transitive AARs such as SQLCipher cannot bring x86/x86_64 JNI
+    # libraries back into the universal APK.
+    # ------------------------------------------------------------------
+    app_gradle = studio / "aFreeRDP/build.gradle"
+    data = read(app_gradle)
+    anchor = '''    defaultConfig {\n        applicationId "com.freerdp.afreerdp"\n'''
+    replacement = '''    defaultConfig {\n        applicationId "com.freerdp.afreerdp"\n        ndk {\n            abiFilters "armeabi-v7a", "arm64-v8a"\n        }\n'''
+    data = replace_once(data, anchor, replacement, "limit application packaging to ARM ABIs")
+    write(app_gradle, data)
+
+    # ------------------------------------------------------------------
     # TV mode is a display appliance mode:
     #   * never start FreeRDP's screen-off disconnect timer
     #   * always request the Android window to keep the display awake
@@ -63,6 +75,10 @@ def main():
     # ------------------------------------------------------------------
     appsettings = studio / "freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/ApplicationSettingsActivity.java"
     data = read(appsettings)
+
+    main_old = '''\tpublic static class MainFragment extends PreferenceFragmentCompat\n\t{\n\t\t@Override public void onCreatePreferences(Bundle savedInstanceState, String rootKey)\n\t\t{\n\t\t\tsetPreferencesFromResource(R.xml.settings_app_headers, rootKey);\n\t\t}\n\t}\n'''
+    main_new = '''\tpublic static class MainFragment extends PreferenceFragmentCompat\n\t{\n\t\t@Override public void onCreatePreferences(Bundle savedInstanceState, String rootKey)\n\t\t{\n\t\t\tsetPreferencesFromResource(R.xml.settings_app_headers, rootKey);\n\t\t\t// TV power behaviour is automatic in BILLION RDP REMOTE, so do not\n\t\t\t// expose a second power page whose unchecked defaults could confuse\n\t\t\t// installers. Phone/tablet users keep the original power controls.\n\t\t\tif (DeviceMode.isTv(requireContext()))\n\t\t\t{\n\t\t\t\tPreference power = findPreference("settings.power");\n\t\t\t\tif (power != null)\n\t\t\t\t\tgetPreferenceScreen().removePreference(power);\n\t\t\t}\n\t\t}\n\t}\n'''
+    data = replace_once(data, main_old, main_new, "hide redundant power settings page on TV")
 
     old = '''\tpublic static int getDisconnectTimeout(Context context)\n\t{\n\t\tSharedPreferences preferences = get(context);\n\t\treturn preferences.getInt(\n\t\t    context.getString(R.string.preference_key_power_disconnect_timeout), 0);\n\t}\n'''
     new = '''\tpublic static int getDisconnectTimeout(Context context)\n\t{\n\t\t// TV/large-screen mode is intended for continuous public-display use.\n\t\t// Never disconnect an active RDP session merely because Android reports\n\t\t// the display as off or there has been no local remote-control input.\n\t\tif (DeviceMode.isTv(context))\n\t\t\treturn 0;\n\n\t\tSharedPreferences preferences = get(context);\n\t\treturn preferences.getInt(\n\t\t    context.getString(R.string.preference_key_power_disconnect_timeout), 0);\n\t}\n'''
@@ -124,6 +140,7 @@ def main():
 
     print("Test11 TV continuous-display patch applied")
     print("TV mode: keep screen awake + no screen-off disconnect timeout")
+    print("TV settings simplified; APK packaging limited to ARMv7 + ARM64")
 
 
 if __name__ == "__main__":
