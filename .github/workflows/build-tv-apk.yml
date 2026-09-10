@@ -62,7 +62,7 @@ jobs:
           git -C upstream fetch --depth=1 origin "$FREERDP_COMMIT"
           git -C upstream checkout -q FETCH_HEAD
 
-      - name: Apply Android 9 adaptive Test7 patches
+      - name: Apply Android 9 adaptive Test8 patches
         shell: bash
         run: |
           set -euxo pipefail
@@ -71,6 +71,7 @@ jobs:
           python3 -m py_compile scripts/patch_brand_ux_test5.py
           python3 -m py_compile scripts/patch_billion_brand_test6.py
           python3 -m py_compile scripts/patch_ux_errors_test7.py
+          python3 -m py_compile scripts/patch_remove_about_test8.py
           python3 scripts/patch_freerdp_tv_test3.py upstream
 
           STUDIO=upstream/client/Android/Studio
@@ -87,6 +88,7 @@ jobs:
           python3 scripts/patch_brand_ux_test5.py upstream
           python3 scripts/patch_billion_brand_test6.py upstream
           python3 scripts/patch_ux_errors_test7.py upstream
+          python3 scripts/patch_remove_about_test8.py upstream
 
           cat "$STUDIO/release.properties"
           grep -R "BILLION RDP REMOTE" -n "$STUDIO/aFreeRDP/src/main/res" "$STUDIO/freeRDPCore/src/main/res/values" "$STUDIO/freeRDPCore/src/main/res/values-zh"
@@ -96,7 +98,9 @@ jobs:
           grep -F "RdpFailureMessage" "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/SessionActivity.java"
           grep -F "always|withText" "$STUDIO/freeRDPCore/src/main/res/menu/bookmark_menu.xml"
           ! grep -Fq 'android:key="bookmark.debug"' "$STUDIO/freeRDPCore/src/main/res/xml/bookmark_settings.xml"
-          ! grep -Fq "LibFreeRDP.getVersion" "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/AboutActivity.java"
+          ! grep -Fq 'android:id="@+id/about"' "$STUDIO/freeRDPCore/src/main/res/menu/home_menu.xml"
+          ! grep -Fq '.presentation.AboutActivity' "$STUDIO/freeRDPCore/src/main/AndroidManifest.xml"
+          test ! -d "$STUDIO/aFreeRDP/src/main/assets/about_page"
 
       - name: Build installable adaptive APK
         shell: bash
@@ -113,23 +117,24 @@ jobs:
           mkdir -p output
           APK="$(find upstream/client/Android/Studio/aFreeRDP/build/outputs/apk -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
-          OUT="output/BILLION-RDP-REMOTE-3.31.1-Android9-Adaptive-Test7.apk"
+          OUT="output/BILLION-RDP-REMOTE-3.31.1-Android9-Adaptive-Test8.apk"
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee output/SHA256.txt
 
           AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
           "$AAPT" dump badging "$OUT" | tee output/APK_BADGING.txt
           grep -Fq "sdkVersion:'28'" output/APK_BADGING.txt
-          grep -Fq "versionName='3.31.1-billion-a9-test7'" output/APK_BADGING.txt
+          grep -Fq "versionName='3.31.1-billion-a9-test8'" output/APK_BADGING.txt
           grep -Fq "application-label:'BILLION RDP REMOTE'" output/APK_BADGING.txt
 
           unzip -l "$OUT" | tee output/APK_FILELIST.txt >/dev/null
           grep -Fq "lib/arm64-v8a/" output/APK_FILELIST.txt
           grep -Fq "lib/armeabi-v7a/" output/APK_FILELIST.txt
+          ! grep -Fq "about_page/" output/APK_FILELIST.txt
 
           {
             echo "Base: FreeRDP 3.31.1"
-            echo "Variant: BILLION RDP REMOTE Android 9 Adaptive Test7"
+            echo "Variant: BILLION RDP REMOTE Android 9 Adaptive Test8"
             echo "App label: BILLION RDP REMOTE"
             echo "minSdk: 28"
             echo "ABIs: armeabi-v7a + arm64-v8a"
@@ -139,7 +144,7 @@ jobs:
             echo "Connection labels clarified: name, IP/hostname, default port"
             echo "Detailed RDP authentication/network/account failure mapping enabled"
             echo "Failure dialog offers Edit Connection for saved profiles"
-            echo "About page simplified to BILLION product/device/version information"
+            echo "Upstream About menu/activity/assets removed completely"
             echo "Developer/debug entry removed from normal connection editor"
             echo "RDP and RemoteApp/RAIL enabled"
             echo "Multiple saved profiles and explicit auto-connect target enabled"
@@ -149,7 +154,7 @@ jobs:
       - name: Upload adaptive APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BILLION-RDP-REMOTE-Android9-Adaptive-Test7
+          name: BILLION-RDP-REMOTE-Android9-Adaptive-Test8
           path: output/
           if-no-files-found: error
           retention-days: 30
