@@ -57,7 +57,7 @@ jobs:
           git -C upstream fetch --depth=1 origin "$FREERDP_COMMIT"
           git -C upstream checkout -q FETCH_HEAD
 
-      - name: Apply Android 9 adaptive Test12 patches
+      - name: Apply Android 9 adaptive Test13 patches
         shell: bash
         run: |
           set -euxo pipefail
@@ -71,6 +71,7 @@ jobs:
           python3 -m py_compile scripts/patch_stability_test10.py
           python3 -m py_compile scripts/patch_tv_always_on_test11.py
           python3 -m py_compile scripts/patch_tv_remote_hd_test12.py
+          python3 -m py_compile scripts/patch_chinese_ui_test13.py
           python3 -m py_compile scripts/generate_test_signing.py
 
           python3 scripts/patch_freerdp_tv_test3.py upstream
@@ -94,16 +95,21 @@ jobs:
           python3 scripts/patch_stability_test10.py upstream
           python3 scripts/patch_tv_always_on_test11.py upstream
           python3 scripts/patch_tv_remote_hd_test12.py upstream
+          python3 scripts/patch_chinese_ui_test13.py upstream
 
           python3 scripts/generate_test_signing.py "$STUDIO/billion-rdp-test.p12" | tee /tmp/signing.txt
           grep -F "CERT_SHA256=$TEST_CERT_SHA256" /tmp/signing.txt
           keytool -list -storetype PKCS12 -keystore "$STUDIO/billion-rdp-test.p12" -storepass BillionRdpTest10 -alias billion-rdp >/dev/null
 
-          grep -F "VERSION_NAME=3.31.1-billion-a9-test12" "$STUDIO/release.properties"
+          grep -F "VERSION_NAME=3.31.1-billion-a9-test13" "$STUDIO/release.properties"
           grep -F 'android:name="android.hardware.camera" android:required="false"' "$STUDIO/aFreeRDP/src/main/AndroidManifest.xml"
           grep -F 'android:name="android.hardware.microphone" android:required="false"' "$STUDIO/aFreeRDP/src/main/AndroidManifest.xml"
           grep -F '电视大屏持续显示保护' "$STUDIO/freeRDPCore/src/main/res/values-zh/strings.xml"
           grep -F '电视大屏高清显示优化' "$STUDIO/freeRDPCore/src/main/res/values-zh/strings.xml"
+          grep -F '再按一次返回键断开远程连接' "$STUDIO/freeRDPCore/src/main/res/values-zh/strings.xml"
+          grep -F '确定要退出 BILLION RDP REMOTE 吗？' "$STUDIO/freeRDPCore/src/main/res/values-zh/strings.xml"
+          ! grep -Fq '@+id/help' "$STUDIO/freeRDPCore/src/main/res/menu/home_menu.xml"
+          ! grep -Fq '.presentation.HelpActivity' "$STUDIO/freeRDPCore/src/main/AndroidManifest.xml"
           grep -F 'KEYCODE_DPAD_RIGHT' "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/utils/BookmarkListAdapter.java"
           grep -F 'KEYCODE_DPAD_LEFT' "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/utils/BookmarkListAdapter.java"
           grep -F 'tvFlags.setFontSmoothing(true)' "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/SessionActivity.java"
@@ -142,9 +148,9 @@ jobs:
           AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
           APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
           ZIPALIGN="$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign"
-          UNSIGNED="output/Test12-signature-stripped.apk"
-          ALIGNED="output/Test12-aligned.apk"
-          OUT="output/BILLION-RDP-REMOTE-3.31.1-Android9-Adaptive-Test12.apk"
+          UNSIGNED="output/Test13-signature-stripped.apk"
+          ALIGNED="output/Test13-aligned.apk"
+          OUT="output/BILLION-RDP-REMOTE-3.31.1-Android9-Adaptive-Test13.apk"
 
           cp "$APK" "$UNSIGNED"
           zip -q -d "$UNSIGNED" 'META-INF/*.RSA' 'META-INF/*.DSA' 'META-INF/*.EC' 'META-INF/*.SF' 'META-INF/*.MF' || true
@@ -167,7 +173,7 @@ jobs:
           sha256sum "$OUT" | tee output/SHA256.txt
           "$AAPT" dump badging "$OUT" | tee output/APK_BADGING.txt
           grep -Fq "sdkVersion:'28'" output/APK_BADGING.txt
-          grep -Fq "versionName='3.31.1-billion-a9-test12'" output/APK_BADGING.txt
+          grep -Fq "versionName='3.31.1-billion-a9-test13'" output/APK_BADGING.txt
           grep -Fq "application-label:'BILLION RDP REMOTE'" output/APK_BADGING.txt
           grep -Fq "uses-feature-not-required: name='android.hardware.camera'" output/APK_BADGING.txt
           grep -Fq "uses-feature-not-required: name='android.hardware.microphone'" output/APK_BADGING.txt
@@ -184,19 +190,20 @@ jobs:
           ! grep -Fq "lib/x86/" output/APK_FILELIST.txt
           ! grep -Fq "lib/x86_64/" output/APK_FILELIST.txt
           ! grep -Fq "about_page/" output/APK_FILELIST.txt
+          ! grep -Fq "help_page/" output/APK_FILELIST.txt
 
           {
             echo "Base: FreeRDP 3.31.1"
-            echo "Variant: BILLION RDP REMOTE Android 9 Adaptive Test12"
+            echo "Variant: BILLION RDP REMOTE Android 9 Adaptive Test13"
             echo "Compile variant: debug (known-good build path), then signature stripped and final-signed"
             echo "Stable reproducible TEST signing baseline starts at Test10"
             echo "Signing certificate SHA256: $TEST_CERT_SHA256"
             echo "APK Signature Scheme: v2 (native on Android 7+, including Android 9)"
-            echo "TV D-pad: OK/Enter connects; RIGHT focuses three-dot actions; LEFT returns; MENU opens actions"
-            echo "TV focused connection row and action button use high-contrast red focus states"
-            echo "TV HD policy: immersive full-screen viewport, 32bpp, GFX, font smoothing, LAN network profile"
-            echo "Automatic resolution stays matched to actual Android render viewport to avoid extra scaling"
-            echo "TV continuous-display protection retained: keep screen awake + disconnect timeout forced to 0"
+            echo "Test13: Help toolbar/activity/assets removed"
+            echo "Test13: Chinese resource audit prevents user-facing English fallback on Chinese systems"
+            echo "Test13: exit, disconnect, certificate, connection, sharing, display and settings feedback localized"
+            echo "TV D-pad navigation and Test12 HD display policy retained"
+            echo "TV continuous-display protection retained"
             echo "Camera/microphone optional; ARMv7 + ARM64 only"
             echo "RDP + RemoteApp/RAIL enabled"
             echo "minSdk 28"
@@ -206,7 +213,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BILLION-RDP-REMOTE-Android9-Adaptive-Test12
+          name: BILLION-RDP-REMOTE-Android9-Adaptive-Test13
           path: output/
           if-no-files-found: error
           retention-days: 30
