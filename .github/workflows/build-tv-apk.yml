@@ -2,7 +2,7 @@ name: Build FreeRDP TV APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -37,12 +37,19 @@ jobs:
             git perl make ninja-build pkg-config python3 \
             autoconf automake libtool gettext
 
-      - name: Install Android SDK components
+      - name: Locate Android SDK manager and install components
         shell: bash
         run: |
           set -euxo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
+          SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under $ANDROID_SDK_ROOT"
+            find "$ANDROID_SDK_ROOT" -maxdepth 4 -type f -name sdkmanager -print || true
+            exit 1
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-37" \
             "build-tools;37.0.0" \
@@ -53,56 +60,61 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          rm -rf work
-          git clone https://github.com/FreeRDP/FreeRDP.git work/src
-          cd work/src
-          git checkout --detach "${FREERDP_COMMIT}"
-          test "$(git rev-parse HEAD)" = "${FREERDP_COMMIT}"
+          rm -rf upstream
+          mkdir upstream
+          git -C upstream init -q
+          git -C upstream remote add origin https://github.com/FreeRDP/FreeRDP.git
+          git -C upstream fetch --depth=1 origin "$FREERDP_COMMIT"
+          git -C upstream checkout -q FETCH_HEAD
+          git -C upstream log -1 --oneline
 
-      - name: Apply Android 9 TV features
+      - name: Apply Android 9 TV Test3 patch
         shell: bash
         run: |
           set -euxo pipefail
-          python3 scripts/patch_freerdp_tv.py work/src
-          cat work/src/client/Android/Studio/release.properties
+          python3 -m py_compile scripts/patch_freerdp_tv_test3.py
+          python3 scripts/patch_freerdp_tv_test3.py upstream
+          cat upstream/client/Android/Studio/release.properties
 
       - name: Build installable debug APK
         shell: bash
-        working-directory: work/src/client/Android/Studio
+        working-directory: upstream/client/Android/Studio
         run: |
           set -euxo pipefail
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace :aFreeRDP:assembleDebug
 
-      - name: Collect APK
+      - name: Collect and verify APK
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p output
-          APK="$(find work/src/client/Android/Studio/aFreeRDP/build/outputs/apk -type f -name '*.apk' | head -n 1)"
-          test -n "${APK}"
-          cp "${APK}" "output/FreeRDP-TV-3.31.1-Android9-Test2.apk"
-          sha256sum "output/FreeRDP-TV-3.31.1-Android9-Test2.apk" | tee output/SHA256.txt
-          cat > output/BUILD_INFO.txt <<'EOF'
-          Base: FreeRDP 3.31.1
-          Variant: TV Android 9 Test2
-          minSdk: 28
-          targetSdk: 28
-          ABI: armeabi-v7a + arm64-v8a
-          RDP: enabled
-          RemoteApp/RAIL: enabled by default
-          Auto-connect last connection: optional
-          Boot auto-start: optional
-          Auto-connect delay: 0/3/5/10/15 sec
-          TV launcher: enabled
-          Touchscreen requirement: disabled
-          Orientation: landscape
-          EOF
+          APK="$(find upstream/client/Android/Studio/aFreeRDP/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" output/FreeRDP-TV-3.31.1-Android9-Test3.apk
+          sha256sum output/FreeRDP-TV-3.31.1-Android9-Test3.apk | tee output/SHA256.txt
+          AAPT="$ANDROID_SDK_ROOT/build-tools/37.0.0/aapt"
+          "$AAPT" dump badging output/FreeRDP-TV-3.31.1-Android9-Test3.apk | tee output/APK_BADGING.txt
+          grep -q "sdkVersion:'28'" output/APK_BADGING.txt
+          grep -q "arm64-v8a" output/APK_BADGING.txt
+          grep -q "armeabi-v7a" output/APK_BADGING.txt
+          {
+            echo "Base: FreeRDP 3.31.1"
+            echo "Variant: Android 9 TV Test3"
+            echo "minSdk: 28"
+            echo "ABIs: armeabi-v7a + arm64-v8a"
+            echo "RDP: enabled"
+            echo "RemoteApp/RAIL: enabled by default"
+            echo "Multiple saved profiles: enabled"
+            echo "Explicit automatic connection target: enabled"
+            echo "Start app after TV boot: optional"
+            echo "Boot-start and auto-connect are independent"
+          } > output/BUILD_INFO.txt
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FreeRDP-TV-Android9-Test2
+          name: FreeRDP-TV-Android9-Test3
           path: output/
           if-no-files-found: error
           retention-days: 30
