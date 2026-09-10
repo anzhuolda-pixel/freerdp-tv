@@ -158,8 +158,8 @@ jobs:
           grep -Fq "sdkVersion:'28'" output/APK_BADGING.txt
           grep -Fq "versionName='3.31.1-billion-a9-test10'" output/APK_BADGING.txt
           grep -Fq "application-label:'BILLION RDP REMOTE'" output/APK_BADGING.txt
-          grep -Fq "uses-feature-not-required:'android.hardware.camera'" output/APK_BADGING.txt
-          grep -Fq "uses-feature-not-required:'android.hardware.microphone'" output/APK_BADGING.txt
+          grep -Fq "uses-feature-not-required: name='android.hardware.camera'" output/APK_BADGING.txt
+          grep -Fq "uses-feature-not-required: name='android.hardware.microphone'" output/APK_BADGING.txt
 
           "$APKSIGNER" verify --verbose --print-certs "$OUT" | tee output/APK_SIGNATURE.txt
           grep -Fq "Verified using v1 scheme (JAR signing): true" output/APK_SIGNATURE.txt
