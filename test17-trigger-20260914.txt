@@ -1,0 +1,2 @@
+Trigger Test17 Android 9 Legacy APK rebuild after workflow registration.
+Background keep-alive default ON; boot auto-start default OFF.
