@@ -63,12 +63,36 @@ grep -F "MIN_API=28" "$STUDIO/release.properties"
 grep -F "TARGET_API=28" "$STUDIO/release.properties"
 grep -F "ABI_FILTERS=armeabi-v7a" "$STUDIO/release.properties"
 grep -F "SPLIT_ENABLED=false" "$STUDIO/release.properties"
-! grep -Fq 'sqlcipher-android' "$STUDIO/freeRDPCore/build.gradle"
+if grep -Fq 'sqlcipher-android' "$STUDIO/freeRDPCore/build.gradle"; then
+  echo "ERROR: SQLCipher dependency still present"
+  exit 1
+fi
 
 pushd "$STUDIO" >/dev/null
 chmod +x gradlew
-./gradlew --no-daemon --stacktrace :aFreeRDP:assembleRelease 2>&1 | tee "$GITHUB_WORKSPACE/output/GRADLE_BUILD.txt"
+GRADLE_LOG="$GITHUB_WORKSPACE/output/GRADLE_BUILD.txt"
+: > "$GRADLE_LOG"
+gradle_rc=1
+for attempt in 1 2 3 4; do
+  echo "===== Gradle build attempt $attempt/4 =====" | tee -a "$GRADLE_LOG"
+  set +e
+  ./gradlew --no-daemon --stacktrace :aFreeRDP:assembleRelease 2>&1 | tee -a "$GRADLE_LOG"
+  gradle_rc=${PIPESTATUS[0]}
+  set -e
+  if [[ "$gradle_rc" -eq 0 ]]; then
+    break
+  fi
+  if [[ "$attempt" -lt 4 ]]; then
+    delay=$((attempt * 15))
+    echo "Build attempt $attempt failed; retrying in ${delay}s for transient download errors..." | tee -a "$GRADLE_LOG"
+    sleep "$delay"
+  fi
+done
 popd >/dev/null
+if [[ "$gradle_rc" -ne 0 ]]; then
+  echo "ERROR: Gradle build failed after 4 attempts"
+  exit "$gradle_rc"
+fi
 
 APK="$(find "$STUDIO/aFreeRDP/build/outputs/apk/release" -type f -name '*.apk' | sort | head -n 1)"
 test -n "$APK"
