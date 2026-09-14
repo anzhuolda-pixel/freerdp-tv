@@ -29,12 +29,16 @@ appdb.write_text('''package com.freerdp.freerdpcore.data;\n\nimport android.cont
 
 core = studio / 'freeRDPCore/build.gradle'
 g = core.read_text(encoding='utf-8')
-g = re.sub(r"androidx\\.core:core:[^']+", 'androidx.core:core:1.10.1', g)
-g = re.sub(r"androidx\\.recyclerview:recyclerview:[^']+", 'androidx.recyclerview:recyclerview:1.3.2', g)
-g = re.sub(r'androidx\\.room:room-runtime:[^\"]+', 'androidx.room:room-runtime:2.5.2', g)
-g = re.sub(r'androidx\\.room:room-compiler:[^\"]+', 'androidx.room:room-compiler:2.5.2', g)
-g = re.sub(r'^\\s*implementation [\'\"]net\\.zetetic:sqlcipher-android:[^\\n]+\\n', '', g, flags=re.M)
-g = re.sub(r"androidx\\.sqlite:sqlite:[^']+", 'androidx.sqlite:sqlite:2.3.1', g)
+g = re.sub(r"androidx\.core:core:[^']+", 'androidx.core:core:1.10.1', g)
+g = re.sub(r"androidx\.recyclerview:recyclerview:[^']+", 'androidx.recyclerview:recyclerview:1.3.2', g)
+g = re.sub(r'androidx\.room:room-runtime:[^"]+', 'androidx.room:room-runtime:2.5.2', g)
+g = re.sub(r'androidx\.room:room-compiler:[^"]+', 'androidx.room:room-compiler:2.5.2', g)
+g, removed = re.subn(r'(?m)^\s*implementation\s+[\'\"]net\.zetetic:sqlcipher-android:[^\'\"]+[\'\"]\s*\n?', '', g, count=1)
+if removed != 1:
+    raise SystemExit('Test18 patch error: expected exactly one SQLCipher dependency line')
+g = re.sub(r"androidx\.sqlite:sqlite:[^']+", 'androidx.sqlite:sqlite:2.3.1', g)
+if 'sqlcipher-android' in g:
+    raise SystemExit('Test18 patch error: SQLCipher dependency still present')
 core.write_text(g, encoding='utf-8')
 
 home = studio / 'freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/HomeActivity.java'
@@ -42,4 +46,4 @@ h = home.read_text(encoding='utf-8')
 h = h.replace('\t\tAppKeepAliveService.applyPreference(this);\n', '\t\tbinding.getRoot().postDelayed(() -> AppKeepAliveService.applyPreference(HomeActivity.this), 5000L);\n', 1)
 home.write_text(h, encoding='utf-8')
 
-print('Test18 Konka32 patch applied')
+print('Test18 Konka32 patch applied - SQLCipher removed, armeabi-v7a only')
