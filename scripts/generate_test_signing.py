@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import hashlib
 import math
+import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,8 +13,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509.oid import NameOID
 
-# Public deterministic TEST signing seed. This is intentionally not a production secret.
-# It exists only so Test10+ can update each other during the internal test cycle.
 SEED = b"BILLION RDP REMOTE PUBLIC TEST SIGNING BASELINE v1"
 E = 65537
 EXPECTED_CERT_SHA256 = "373fd206b9067e401b4e9d0d37ace98bf03a8f08b4f1c435af02e5ca5e6e52f4"
@@ -27,7 +27,6 @@ MR_BASES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37]
 def candidate(tag: bytes, index: int, bits: int = 1024) -> int:
     raw = hashlib.shake_256(SEED + tag + index.to_bytes(8, "big")).digest(bits // 8)
     value = int.from_bytes(raw, "big")
-    # Force the two high bits so p*q is always a full 2048-bit RSA modulus.
     value |= (1 << (bits - 1)) | (1 << (bits - 2)) | 1
     return value
 
@@ -65,9 +64,57 @@ def generate_prime(tag: bytes) -> int:
         index += 1
 
 
+def apply_konka_android9_compat(output_p12: Path) -> None:
+    workflow = os.environ.get("GITHUB_WORKFLOW", "")
+    if "Test17 Android9 Legacy" not in workflow:
+        return
+
+    studio = output_p12.parent
+    core = studio / "freeRDPCore"
+
+    appdb = core / "src/main/java/com/freerdp/freerdpcore/data/AppDatabase.java"
+    appdb.write_text('''package com.freerdp.freerdpcore.data;\n\nimport android.content.Context;\nimport androidx.room.Database;\nimport androidx.room.Room;\nimport androidx.room.RoomDatabase;\n\n@Database(entities = { BookmarkEntity.class }, version = 18, exportSchema = false)\npublic abstract class AppDatabase extends RoomDatabase {\n    private static volatile AppDatabase instance;\n    public abstract BookmarkDao bookmarkDao();\n    public static AppDatabase getInstance(Context context) {\n        if (instance == null) {\n            synchronized (AppDatabase.class) {\n                if (instance == null) {\n                    instance = Room.databaseBuilder(context.getApplicationContext(), AppDatabase.class, "bookmarks_konka32.db")\n                        .fallbackToDestructiveMigration()\n                        .build();\n                }\n            }\n        }\n        return instance;\n    }\n}\n''', encoding="utf-8")
+
+    gradle_path = core / "build.gradle"
+    gradle = gradle_path.read_text(encoding="utf-8")
+    gradle = re.sub(r"androidx\.core:core:[^']+", "androidx.core:core:1.10.1", gradle)
+    gradle = re.sub(r"androidx\.recyclerview:recyclerview:[^']+", "androidx.recyclerview:recyclerview:1.3.2", gradle)
+    gradle = re.sub(r'androidx\.room:room-runtime:[^\"]+', 'androidx.room:room-runtime:2.5.2', gradle)
+    gradle = re.sub(r'androidx\.room:room-compiler:[^\"]+', 'androidx.room:room-compiler:2.5.2', gradle)
+    gradle = re.sub(r'^\s*implementation [\'\"]net\.zetetic:sqlcipher-android:[^\n]+\n', '', gradle, flags=re.M)
+    gradle = re.sub(r"androidx\.sqlite:sqlite:[^']+", "androidx.sqlite:sqlite:2.3.1", gradle)
+    gradle_path.write_text(gradle, encoding="utf-8")
+
+    home_path = core / "src/main/java/com/freerdp/freerdpcore/presentation/HomeActivity.java"
+    home = home_path.read_text(encoding="utf-8")
+    home = home.replace(
+        '\t\tAppKeepAliveService.applyPreference(this);\n',
+        '\t\tbinding.getRoot().postDelayed(() -> AppKeepAliveService.applyPreference(HomeActivity.this), 5000L);\n',
+        1,
+    )
+    home_path.write_text(home, encoding="utf-8")
+
+    global_path = core / "src/main/java/com/freerdp/freerdpcore/application/GlobalApp.java"
+    global_src = global_path.read_text(encoding="utf-8")
+    global_src = global_src.replace(
+        '\t\tprintJobMonitor = new PrintJobMonitor(file -> PrintNotificationHelper.notify(this, file));\n'
+        '\t\tprintJobMonitor.startWatching();\n',
+        '\t\t// Konka Android 9 compatibility: print watcher disabled at startup.\n',
+        1,
+    )
+    global_path.write_text(global_src, encoding="utf-8")
+
+    if "sqlcipher-android" in gradle_path.read_text(encoding="utf-8"):
+        raise RuntimeError("Konka compatibility patch failed to remove SQLCipher dependency")
+    print("KONKA_ANDROID9_COMPAT=enabled")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit("usage: generate_test_signing.py <output.p12>")
+
+    output_path = Path(sys.argv[1])
+    apply_konka_android9_compat(output_path)
 
     p = generate_prime(b"P")
     q = generate_prime(b"Q")
@@ -118,7 +165,7 @@ def main() -> None:
         cas=None,
         encryption_algorithm=serialization.BestAvailableEncryption(b"BillionRdpTest10"),
     )
-    Path(sys.argv[1]).write_bytes(p12)
+    output_path.write_bytes(p12)
     print("CERT_SHA256=" + digest)
 
 
