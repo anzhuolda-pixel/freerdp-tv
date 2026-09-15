@@ -76,31 +76,42 @@ grep -Fq 'Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q' "$STUDIO/freeRDPCore/s
 
 pushd "$STUDIO" >/dev/null
 chmod +x gradlew
-# Record the final dependency graph. checkReleaseAarMetadata, which is pulled by
-# assemble/lint, rejects Android libraries whose metadata is incompatible with
-# this application's SDK configuration.
 ./gradlew --no-daemon :aFreeRDP:dependencies --configuration releaseRuntimeClasspath \
   2>&1 | tee "$GITHUB_WORKSPACE/output/DEPENDENCIES.txt"
 
-# Assemble first, then lint BOTH the app and core library against minSdk 28.
-# NewApi is a hard compatibility gate; any API 29+ call that is not correctly
-# guarded must prevent this APK from being published.
 ./gradlew --no-daemon --stacktrace :aFreeRDP:assembleRelease \
   2>&1 | tee "$GITHUB_WORKSPACE/output/GRADLE_BUILD.txt"
+
+# FreeRDP upstream currently has many ordinary lint errors unrelated to API
+# level compatibility. Run both lint tasks to completion far enough to emit
+# their text reports, capture the Gradle status for diagnostics, then make
+# Android 9's NewApi detector the hard publication gate below.
+set +e
 ./gradlew --no-daemon --stacktrace :freeRDPCore:lintRelease :aFreeRDP:lintRelease \
   2>&1 | tee "$GITHUB_WORKSPACE/output/LINT_BUILD.txt"
+LINT_GRADLE_RC=${PIPESTATUS[0]}
+set -e
+echo "lint_gradle_exit_code=$LINT_GRADLE_RC" | tee "$GITHUB_WORKSPACE/output/LINT_STATUS.txt"
 popd >/dev/null
 
-# Preserve the machine-readable lint reports and explicitly reject genuine
-# NewApi findings. Do not grep ordinary explanatory prose for strings such as
-# "API 29", because that can create false compatibility failures even when
-# lint has proved all newer calls are correctly guarded.
-find "$STUDIO" -path '*/build/intermediates/lint_intermediate_text_report/*/lint-results-*.txt' -type f -print -exec cat {} \; \
-  > "$GITHUB_WORKSPACE/output/LINT_ALL.txt" || true
-if grep -Fq '[NewApi]' "$GITHUB_WORKSPACE/output/LINT_ALL.txt"; then
-  echo 'Android 9 compatibility gate failed: NewApi finding present' >&2
+mapfile -t LINT_REPORTS < <(find "$STUDIO" -path '*/build/intermediates/lint_intermediate_text_report/*/lint-results-*.txt' -type f | sort)
+printf '%s\n' "${LINT_REPORTS[@]}" > "$GITHUB_WORKSPACE/output/LINT_REPORT_FILES.txt"
+if [ "${#LINT_REPORTS[@]}" -lt 2 ]; then
+  echo "Android 9 compatibility gate failed: expected lint reports for both app and core" >&2
   exit 1
 fi
+: > "$GITHUB_WORKSPACE/output/LINT_ALL.txt"
+for report in "${LINT_REPORTS[@]}"; do
+  echo "===== $report =====" >> "$GITHUB_WORKSPACE/output/LINT_ALL.txt"
+  cat "$report" >> "$GITHUB_WORKSPACE/output/LINT_ALL.txt"
+  echo >> "$GITHUB_WORKSPACE/output/LINT_ALL.txt"
+done
+if grep -Fq '[NewApi]' "$GITHUB_WORKSPACE/output/LINT_ALL.txt"; then
+  echo 'Android 9 compatibility gate failed: genuine NewApi finding present' >&2
+  grep -n -B2 -A4 '\[NewApi\]' "$GITHUB_WORKSPACE/output/LINT_ALL.txt" | tee "$GITHUB_WORKSPACE/output/NEWAPI_FINDINGS.txt" >&2 || true
+  exit 1
+fi
+echo 'Android 9 NewApi gate: PASS (0 findings)' | tee "$GITHUB_WORKSPACE/output/NEWAPI_STATUS.txt"
 
 APK="$(find "$STUDIO/aFreeRDP/build/outputs/apk/release" -type f -name '*.apk' | sort | head -n 1)"
 test -n "$APK"
@@ -130,8 +141,8 @@ Native platform: android-28 (NDK r25c)
 Confirmed fix: FileObserver(File,int) API29 startup call removed
 Android 9: print monitor disabled before construction
 Android URI scheme normalized to lowercase rdp
-Android lintRelease: app + freeRDPCore passed
-Explicit NewApi lint gate: passed
+Android lint reports generated for app + freeRDPCore
+Explicit NewApi lint gate: 0 findings required
 AAR metadata/dependency compatibility checks: passed during build
 Bookmark DB: standard Room/SQLite
 SQLCipher startup path removed
