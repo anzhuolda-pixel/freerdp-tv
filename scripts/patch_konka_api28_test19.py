@@ -41,7 +41,7 @@ def main():
     write(props, data)
 
     # ------------------------------------------------------------------
-    # CRITICAL Android 9 fix:
+    # CRITICAL Android 9 fix #1:
     # FileObserver(File, int) was added only in API 29. FreeRDP 3.31.x
     # constructs PrintJobMonitor from Application.onCreate(), so forcing
     # minSdk to 28 without changing this constructor causes NoSuchMethodError
@@ -89,6 +89,32 @@ def main():
 \t\t}'''
     data = replace_once(data, old, new, 'guard print monitor startup')
     write(global_app, data)
+
+    # ------------------------------------------------------------------
+    # CRITICAL Android 9 fix #2:
+    # Parcel.readBoolean()/writeBoolean() were added in API 29. FreeRDP
+    # 3.31.x uses them throughout BookmarkBase and all nested parcelables.
+    # Android's boolean Parcel representation is an int, so use the older
+    # readInt()/writeInt() API. This preserves the same 0/1 representation
+    # while remaining valid on API 28.
+    # ------------------------------------------------------------------
+    bookmark = studio / "freeRDPCore/src/main/java/com/freerdp/freerdpcore/domain/BookmarkBase.java"
+    data = read(bookmark)
+    read_count = data.count('parcel.readBoolean()')
+    if read_count != 18:
+        fail(f'Parcel.readBoolean compatibility patch: expected 18 calls, found {read_count}')
+    data = data.replace('parcel.readBoolean()', '(parcel.readInt() != 0)')
+
+    write_matches = re.findall(r'out\.writeBoolean\(([A-Za-z_][A-Za-z0-9_]*)\);', data)
+    if len(write_matches) != 20:
+        fail(f'Parcel.writeBoolean compatibility patch: expected 20 calls, found {len(write_matches)}')
+    data = re.sub(
+        r'out\.writeBoolean\(([A-Za-z_][A-Za-z0-9_]*)\);',
+        r'out.writeInt(\1 ? 1 : 0);',
+        data)
+    if '.readBoolean()' in data or '.writeBoolean(' in data:
+        fail('API29 Parcel boolean call still present after compatibility patch')
+    write(bookmark, data)
 
     # Keep the first frame as simple as possible on non-standard vendor TV
     # firmware. The first-run guide is optional and must not participate in
@@ -142,12 +168,14 @@ def main():
         fail('API29 FileObserver constructor still present')
     if 'Build.VERSION_CODES.Q' not in read(global_app):
         fail('Android 9 print monitor guard missing')
+    if '.readBoolean()' in read(bookmark) or '.writeBoolean(' in read(bookmark):
+        fail('API29 Parcel boolean API still present')
     if 'android:scheme="Rdp"' in read(manifest):
         fail('uppercase Rdp scheme still present')
     if 'android:banner="@drawable/baihong_tv_banner"' not in read(manifest):
         fail('TV banner attribute missing')
 
-    print('Test19 patch applied: Android 9 startup API mismatch fixed')
+    print('Test19 patch applied: Android 9 API28 compatibility backports complete')
 
 
 if __name__ == '__main__':
