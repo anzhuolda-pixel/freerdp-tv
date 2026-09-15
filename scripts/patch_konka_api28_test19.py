@@ -91,24 +91,26 @@ def main():
     write(global_app, data)
 
     # Keep the first frame as simple as possible on non-standard vendor TV
-    # firmware. The first-run guide is optional and can be accessed via
-    # settings later; it must not participate in startup diagnostics.
+    # firmware. The first-run guide is optional and must not participate in
+    # startup diagnostics.
     home = studio / "freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/HomeActivity.java"
     data = read(home)
     data = data.replace('\t\tDeviceMode.maybeShowFirstRunGuide(this);\n', '', 1)
     write(home, data)
 
-    # The app advertises a LEANBACK launcher after the TV patches. Add a real
-    # banner resource so Android TV launchers and lint do not reject the
-    # manifest. A vector is used here to keep the build text-only/reproducible.
+    # The TV patches add LEANBACK_LAUNCHER. Lint therefore requires a banner.
+    # Insert it directly after <application so this remains robust even when
+    # earlier branding patches replace the icon resource/name.
     manifest = studio / "aFreeRDP/src/main/AndroidManifest.xml"
     data = read(manifest)
     if 'android:banner=' not in data:
-        data = replace_once(
-            data,
-            '        android:icon="@mipmap/ic_launcher"\n',
-            '        android:icon="@mipmap/ic_launcher"\n        android:banner="@drawable/baihong_tv_banner"\n',
-            'add TV banner attribute')
+        marker = '    <application\n'
+        if marker not in data:
+            fail('application tag marker not found for TV banner')
+        data = data.replace(
+            marker,
+            marker + '        android:banner="@drawable/baihong_tv_banner"\n',
+            1)
     write(manifest, data)
 
     banner = studio / "aFreeRDP/src/main/res/drawable/baihong_tv_banner.xml"
