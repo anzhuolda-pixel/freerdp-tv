@@ -67,7 +67,7 @@ def main():
 
     old = '''\t\tprintJobMonitor = new PrintJobMonitor(file -> PrintNotificationHelper.notify(this, file));
 \t\tprintJobMonitor.startWatching();'''
-    new = '''\t\t// Test19: FreeRDP 3.31.x normally assumes API 29+.  Android 9/API 28
+    new = '''\t\t// Test19: FreeRDP 3.31.x normally assumes API 29+. Android 9/API 28
 \t\t// must not enter the newer printing monitor startup path.
 \t\tif (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
 \t\t{
@@ -103,6 +103,13 @@ def main():
     # earlier branding patches replace the icon resource/name.
     manifest = studio / "aFreeRDP/src/main/AndroidManifest.xml"
     data = read(manifest)
+
+    # Android URI schemes are case sensitive. Upstream carries both rdp and
+    # Rdp; current Android lint rejects the uppercase form. Keep the standard
+    # lowercase rdp scheme only. This is also safer on older PackageParser
+    # implementations used by vendor Android 9 televisions.
+    data = data.replace('                <data android:scheme="Rdp" />\n', '', 1)
+
     if 'android:banner=' not in data:
         marker = '    <application\n'
         if marker not in data:
@@ -135,6 +142,8 @@ def main():
         fail('API29 FileObserver constructor still present')
     if 'Build.VERSION_CODES.Q' not in read(global_app):
         fail('Android 9 print monitor guard missing')
+    if 'android:scheme="Rdp"' in read(manifest):
+        fail('uppercase Rdp scheme still present')
     if 'android:banner="@drawable/baihong_tv_banner"' not in read(manifest):
         fail('TV banner attribute missing')
 
