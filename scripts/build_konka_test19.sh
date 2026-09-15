@@ -68,17 +68,41 @@ grep -F "VERSION_NAME=3.31.1-baihong-konka32-api28-test19" "$STUDIO/release.prop
 grep -F "MIN_API=28" "$STUDIO/release.properties"
 grep -F "TARGET_API=28" "$STUDIO/release.properties"
 grep -F "ABI_FILTERS=armeabi-v7a" "$STUDIO/release.properties"
+grep -F -- "-DANDROID_PLATFORM=android-28" "$STUDIO/release.properties"
 ! grep -Fq 'sqlcipher-android' "$STUDIO/freeRDPCore/build.gradle"
 ! grep -Fq 'super(new File(WATCH_DIR), CLOSE_WRITE)' "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/presentation/PrintJobMonitor.java"
 grep -Fq 'Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q' "$STUDIO/freeRDPCore/src/main/java/com/freerdp/freerdpcore/application/GlobalApp.java"
+! grep -Fq 'android:scheme="Rdp"' "$STUDIO/aFreeRDP/src/main/AndroidManifest.xml"
 
 pushd "$STUDIO" >/dev/null
 chmod +x gradlew
-# Assemble first, then run lint against the actual API-28 manifest. Lint is a
-# deliberate gate so another unguarded API 29+ call cannot silently ship.
-./gradlew --no-daemon --stacktrace :aFreeRDP:assembleRelease 2>&1 | tee "$GITHUB_WORKSPACE/output/GRADLE_BUILD.txt"
-./gradlew --no-daemon --stacktrace :aFreeRDP:lintRelease 2>&1 | tee "$GITHUB_WORKSPACE/output/LINT_BUILD.txt"
+# Record the final dependency graph. checkReleaseAarMetadata, which is pulled by
+# assemble/lint, rejects Android libraries whose metadata is incompatible with
+# this application's SDK configuration.
+./gradlew --no-daemon :aFreeRDP:dependencies --configuration releaseRuntimeClasspath \
+  2>&1 | tee "$GITHUB_WORKSPACE/output/DEPENDENCIES.txt"
+
+# Assemble first, then lint BOTH the app and core library against minSdk 28.
+# NewApi is a hard compatibility gate; any API 29+ call that is not correctly
+# guarded must prevent this APK from being published.
+./gradlew --no-daemon --stacktrace :aFreeRDP:assembleRelease \
+  2>&1 | tee "$GITHUB_WORKSPACE/output/GRADLE_BUILD.txt"
+./gradlew --no-daemon --stacktrace :freeRDPCore:lintRelease :aFreeRDP:lintRelease \
+  2>&1 | tee "$GITHUB_WORKSPACE/output/LINT_BUILD.txt"
 popd >/dev/null
+
+# Preserve the machine-readable lint reports and explicitly reject NewApi even
+# if a future lint severity/default changes.
+find "$STUDIO" -path '*/build/intermediates/lint_intermediate_text_report/*/lint-results-*.txt' -type f -print -exec cat {} \; \
+  > "$GITHUB_WORKSPACE/output/LINT_ALL.txt" || true
+if grep -Fq '[NewApi]' "$GITHUB_WORKSPACE/output/LINT_ALL.txt"; then
+  echo 'Android 9 compatibility gate failed: NewApi finding present' >&2
+  exit 1
+fi
+if grep -Eiq 'requires api level (29|3[0-9])|call requires api level (29|3[0-9])' "$GITHUB_WORKSPACE/output/LINT_ALL.txt"; then
+  echo 'Android 9 compatibility gate failed: API 29+ requirement present' >&2
+  exit 1
+fi
 
 APK="$(find "$STUDIO/aFreeRDP/build/outputs/apk/release" -type f -name '*.apk' | sort | head -n 1)"
 test -n "$APK"
@@ -101,12 +125,16 @@ if unzip -l "$OUT" | grep -Eq 'lib/(arm64-v8a|x86|x86_64|riscv64)/'; then exit 1
 if unzip -l "$OUT" | grep -Fiq 'sqlcipher'; then exit 1; fi
 
 cat > "$GITHUB_WORKSPACE/output/BUILD_INFO.txt" <<'EOF'
-百宏RDP Test19 - Konka Android 9 API28 startup compatibility
+百宏RDP Test19 - Konka Android 9 / API28 compatibility build
 ABI: armeabi-v7a only
 minSdk=28; targetSdk=28
+Native platform: android-28 (NDK r25c)
 Confirmed fix: FileObserver(File,int) API29 startup call removed
 Android 9: print monitor disabled before construction
-Android API lintRelease gate: passed
+Android URI scheme normalized to lowercase rdp
+Android lintRelease: app + freeRDPCore passed
+Explicit NewApi/API29+ lint gate: passed
+AAR metadata/dependency compatibility checks: passed during build
 Bookmark DB: standard Room/SQLite
 SQLCipher startup path removed
 FreeRDP JNI lazy-loaded on first session
