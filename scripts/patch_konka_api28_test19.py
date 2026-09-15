@@ -15,6 +15,7 @@ def read(path):
 
 
 def write(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(data, encoding="utf-8", newline="\n")
 
 
@@ -97,11 +98,43 @@ def main():
     data = data.replace('\t\tDeviceMode.maybeShowFirstRunGuide(this);\n', '', 1)
     write(home, data)
 
+    # The app advertises a LEANBACK launcher after the TV patches. Add a real
+    # banner resource so Android TV launchers and lint do not reject the
+    # manifest. A vector is used here to keep the build text-only/reproducible.
+    manifest = studio / "aFreeRDP/src/main/AndroidManifest.xml"
+    data = read(manifest)
+    if 'android:banner=' not in data:
+        data = replace_once(
+            data,
+            '        android:icon="@mipmap/ic_launcher"\n',
+            '        android:icon="@mipmap/ic_launcher"\n        android:banner="@drawable/baihong_tv_banner"\n',
+            'add TV banner attribute')
+    write(manifest, data)
+
+    banner = studio / "aFreeRDP/src/main/res/drawable/baihong_tv_banner.xml"
+    write(banner, '''<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+        </shape>
+    </item>
+    <item android:left="12dp" android:right="12dp" android:top="12dp" android:bottom="12dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#C62828" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+</layer-list>
+''')
+
     # Verification guards for the patch itself.
     if 'super(new File(WATCH_DIR), CLOSE_WRITE);' in read(monitor):
         fail('API29 FileObserver constructor still present')
     if 'Build.VERSION_CODES.Q' not in read(global_app):
         fail('Android 9 print monitor guard missing')
+    if 'android:banner="@drawable/baihong_tv_banner"' not in read(manifest):
+        fail('TV banner attribute missing')
 
     print('Test19 patch applied: Android 9 startup API mismatch fixed')
 
