@@ -82,30 +82,38 @@ chmod +x gradlew
 ./gradlew --no-daemon --stacktrace :aFreeRDP:assembleRelease \
   2>&1 | tee "$GITHUB_WORKSPACE/output/GRADLE_BUILD.txt"
 
-# FreeRDP upstream currently has many ordinary lint errors unrelated to API
-# level compatibility. Run both lint tasks to completion far enough to emit
-# their text reports, capture the Gradle status for diagnostics, then make
-# Android 9's NewApi detector the hard publication gate below.
+# Upstream FreeRDP has many non-API lint findings. Run each module separately
+# so both reports are always emitted even if one module's ordinary lint errors
+# make Gradle return non-zero. The publication gate below rejects NewApi only.
 set +e
-./gradlew --no-daemon --stacktrace :freeRDPCore:lintRelease :aFreeRDP:lintRelease \
-  2>&1 | tee "$GITHUB_WORKSPACE/output/LINT_BUILD.txt"
-LINT_GRADLE_RC=${PIPESTATUS[0]}
+./gradlew --no-daemon --stacktrace :freeRDPCore:lintRelease \
+  2>&1 | tee "$GITHUB_WORKSPACE/output/LINT_CORE_BUILD.txt"
+LINT_CORE_RC=${PIPESTATUS[0]}
+./gradlew --no-daemon --stacktrace :aFreeRDP:lintRelease \
+  2>&1 | tee "$GITHUB_WORKSPACE/output/LINT_APP_BUILD.txt"
+LINT_APP_RC=${PIPESTATUS[0]}
 set -e
-echo "lint_gradle_exit_code=$LINT_GRADLE_RC" | tee "$GITHUB_WORKSPACE/output/LINT_STATUS.txt"
+cat "$GITHUB_WORKSPACE/output/LINT_CORE_BUILD.txt" "$GITHUB_WORKSPACE/output/LINT_APP_BUILD.txt" \
+  > "$GITHUB_WORKSPACE/output/LINT_BUILD.txt"
+printf 'core_lint_gradle_exit_code=%s\napp_lint_gradle_exit_code=%s\n' "$LINT_CORE_RC" "$LINT_APP_RC" \
+  | tee "$GITHUB_WORKSPACE/output/LINT_STATUS.txt"
 popd >/dev/null
 
-mapfile -t LINT_REPORTS < <(find "$STUDIO" -path '*/build/intermediates/lint_intermediate_text_report/*/lint-results-*.txt' -type f | sort)
-printf '%s\n' "${LINT_REPORTS[@]}" > "$GITHUB_WORKSPACE/output/LINT_REPORT_FILES.txt"
-if [ "${#LINT_REPORTS[@]}" -lt 2 ]; then
-  echo "Android 9 compatibility gate failed: expected lint reports for both app and core" >&2
+CORE_REPORT="$(find "$STUDIO/freeRDPCore" -path '*/build/intermediates/lint_intermediate_text_report/*/lint-results-*.txt' -type f | sort | head -n 1)"
+APP_REPORT="$(find "$STUDIO/aFreeRDP" -path '*/build/intermediates/lint_intermediate_text_report/*/lint-results-*.txt' -type f | sort | head -n 1)"
+if [ -z "$CORE_REPORT" ] || [ -z "$APP_REPORT" ]; then
+  echo "Android 9 compatibility gate failed: missing app/core lint report" >&2
   exit 1
 fi
-: > "$GITHUB_WORKSPACE/output/LINT_ALL.txt"
-for report in "${LINT_REPORTS[@]}"; do
-  echo "===== $report =====" >> "$GITHUB_WORKSPACE/output/LINT_ALL.txt"
-  cat "$report" >> "$GITHUB_WORKSPACE/output/LINT_ALL.txt"
-  echo >> "$GITHUB_WORKSPACE/output/LINT_ALL.txt"
-done
+printf '%s\n%s\n' "$CORE_REPORT" "$APP_REPORT" > "$GITHUB_WORKSPACE/output/LINT_REPORT_FILES.txt"
+{
+  echo "===== $CORE_REPORT ====="
+  cat "$CORE_REPORT"
+  echo
+  echo "===== $APP_REPORT ====="
+  cat "$APP_REPORT"
+  echo
+} > "$GITHUB_WORKSPACE/output/LINT_ALL.txt"
 if grep -Fq '[NewApi]' "$GITHUB_WORKSPACE/output/LINT_ALL.txt"; then
   echo 'Android 9 compatibility gate failed: genuine NewApi finding present' >&2
   grep -n -B2 -A4 '\[NewApi\]' "$GITHUB_WORKSPACE/output/LINT_ALL.txt" | tee "$GITHUB_WORKSPACE/output/NEWAPI_FINDINGS.txt" >&2 || true
@@ -141,7 +149,7 @@ Native platform: android-28 (NDK r25c)
 Confirmed fix: FileObserver(File,int) API29 startup call removed
 Android 9: print monitor disabled before construction
 Android URI scheme normalized to lowercase rdp
-Android lint reports generated for app + freeRDPCore
+Android lint reports generated independently for app + freeRDPCore
 Explicit NewApi lint gate: 0 findings required
 AAR metadata/dependency compatibility checks: passed during build
 Bookmark DB: standard Room/SQLite
