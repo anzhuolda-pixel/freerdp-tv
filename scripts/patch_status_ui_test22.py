@@ -32,7 +32,7 @@ def insert_before_last(data, marker, addition, desc):
     return data[:pos] + addition + data[pos:]
 
 def set_string(data, name, value):
-    pattern = re.compile(r'<string\\s+name="' + re.escape(name) + r'"(?:\\s+[^>]*)?>.*?</string>')
+    pattern = re.compile(r'<string\s+name="' + re.escape(name) + r'"(?:\s+[^>]*)?>.*?</string>')
     repl = f'<string name="{name}">{value}</string>'
     if pattern.search(data):
         return pattern.sub(repl, data, count=1)
