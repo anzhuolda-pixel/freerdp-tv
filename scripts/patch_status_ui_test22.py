@@ -370,9 +370,8 @@ def main():
 ''', "add diagnostics preferences")
     write(tv, data)
 
-    arrays = studio / "freeRDPCore/src/main/res/values/arrays.xml"
-    data = read(arrays)
-    data = insert_before_last(data, "</resources>", '''
+    write(studio / "freeRDPCore/src/main/res/values/baihong_test22_arrays.xml", '''<?xml version="1.0" encoding="utf-8"?>
+<resources>
     <string-array name="baihong_log_retention_entries">
         <item>3 days</item><item>7 days</item><item>14 days</item><item>30 days</item>
         <item>90 days</item><item>180 days</item><item>365 days</item>
@@ -381,23 +380,17 @@ def main():
         <item>3</item><item>7</item><item>14</item><item>30</item>
         <item>90</item><item>180</item><item>365</item>
     </string-array>
-''', "add retention arrays")
-    write(arrays, data)
+</resources>
+''')
 
-    zh_arrays = studio / "freeRDPCore/src/main/res/values-zh/arrays.xml"
-    if zh_arrays.is_file():
-        data = read(zh_arrays)
-        data = insert_before_last(data, "</resources>", '''
+    write(studio / "freeRDPCore/src/main/res/values-zh/baihong_test22_arrays.xml", '''<?xml version="1.0" encoding="utf-8"?>
+<resources>
     <string-array name="baihong_log_retention_entries">
         <item>3 天</item><item>7 天</item><item>14 天</item><item>30 天</item>
         <item>90 天</item><item>180 天</item><item>365 天</item>
     </string-array>
-    <string-array name="baihong_log_retention_values">
-        <item>3</item><item>7</item><item>14</item><item>30</item>
-        <item>90</item><item>180</item><item>365</item>
-    </string-array>
-''', "add zh retention arrays")
-        write(zh_arrays, data)
+</resources>
+''')
 
     en = studio / "freeRDPCore/src/main/res/values/strings.xml"
     data = read(en)
