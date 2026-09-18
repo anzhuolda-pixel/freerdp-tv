@@ -338,6 +338,34 @@ def main():
                         lifecycle + "\t@Override protected void onSaveInstanceState(Bundle outState)\n",
                         "add home monitor lifecycle")
 
+    # Some earlier TV patches already add HomeActivity.onPause(). If so, keep
+    # that lifecycle method and inject our monitor cleanup into it rather than
+    # leaving a duplicate Java method.
+    pause_sig = "\t@Override protected void onPause()\n\t{\n"
+    if data.count(pause_sig) > 1:
+        pos = 0
+        ours_start = -1
+        while True:
+            pos = data.find(pause_sig, pos)
+            if pos < 0:
+                break
+            if "baihongStatusActive = false;" in data[pos:pos + 450]:
+                ours_start = pos
+                break
+            pos += len(pause_sig)
+        if ours_start < 0:
+            fail("duplicate HomeActivity.onPause found but Test22 copy was not identifiable")
+        ours_end = data.find("\t@Override protected void onDestroy()", ours_start)
+        if ours_end < 0:
+            fail("Test22 onPause end marker not found")
+        data = data[:ours_start] + data[ours_end:]
+        pause_cleanup = pause_sig + (
+            "\t\tbaihongStatusActive = false;\n"
+            "\t\tbaihongStatusHandler.removeCallbacks(baihongStatusRunnable);\n"
+        )
+        data = replace_once(data, pause_sig, pause_cleanup,
+                            "merge status monitor cleanup into existing HomeActivity.onPause")
+
     data = replace_once(data, '''\t\telse if (itemId == R.id.appSettings)
 \t\t{
 ''', '''\t\telse if (itemId == R.id.connectionLogs)
