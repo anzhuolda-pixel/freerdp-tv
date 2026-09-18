@@ -91,7 +91,7 @@ def main():
     end = data.find('\tprivate void onSessionFailed()\n', start)
     if start < 0 or end < 0:
         fail('performAutoReconnect method bounds not found')
-    new_perform = r'''\tprivate void performAutoReconnect()
+    new_perform = '''\tprivate void performAutoReconnect()
 \t{
 \t\treconnectScheduled = false;
 \t\tif (!autoReconnectMode || connectCancelledByUser || reconnectBookmark == null ||
@@ -186,7 +186,7 @@ def main():
     data = replace_once(data, disconnected_anchor, disconnected_new, 'log unexpected disconnects')
 
     state_anchor = '\tprivate void onConnectionStateChanged(SessionViewModel.ConnectionState state)\n'
-    diag_methods = r'''\tprivate BookmarkBase getBaihongBookmark()
+    diag_methods = '''\tprivate BookmarkBase getBaihongBookmark()
 \t{
 \t\tif (session != null && session.getBookmark() != null) return session.getBookmark();
 \t\treturn reconnectBookmark;
